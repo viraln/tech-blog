@@ -377,8 +377,11 @@ export default function InfiniteArticles({
       // Log information for debugging
       console.log(`Page ${nextPage} loaded. Articles: ${data?.articles?.length}, Total: ${data?.pagination?.total}, Has more according to API: ${data?.pagination?.hasMore}`);
       
+      // Handle different API response formats (some endpoints use 'posts', others use 'articles')
+      const articlesData = data.articles || data.posts || [];
+      
       // Check if the API returned any articles
-      if (!data.articles || !Array.isArray(data.articles) || data.articles.length === 0) {
+      if (!articlesData || !Array.isArray(articlesData) || articlesData.length === 0) {
         console.log('No articles returned from API, setting hasMore=false');
         setHasMore(false);
         
@@ -391,14 +394,14 @@ export default function InfiniteArticles({
       } 
       
       // Filter out invalid/mock articles
-      const validArticles = data.articles.filter(article => 
+      const validArticles = articlesData.filter(article => 
         article && 
         article.slug && 
         !article.slug.startsWith('placeholder-') && 
         !article.slug.startsWith('mock-post-')
       );
       
-      console.log(`Found ${validArticles.length} valid articles out of ${data.articles.length}`);
+      console.log(`Found ${validArticles.length} valid articles out of ${articlesData.length}`);
       
       if (validArticles.length === 0) {
         console.log('No valid articles after filtering, trying next page');
