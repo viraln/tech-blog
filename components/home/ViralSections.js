@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import Image from 'next/image'
+import ShimmerImage from '../ShimmerImage'
 import { useState, useMemo } from 'react'
 
 // Utility function to generate stable random-like numbers based on input string
@@ -40,7 +41,7 @@ export function HotTakeSection({ posts }) {
             >
               <div className="flex items-stretch min-w-0">
                 <div className="relative w-24 h-24 flex-shrink-0">
-                  <Image
+                  <ShimmerImage
                     src={post.image}
                     alt={post.title}
                     fill
@@ -96,7 +97,7 @@ export function DailyDigestSection({ posts }) {
             className="flex items-center space-x-3 group bg-white/10 backdrop-blur-sm rounded-lg overflow-hidden hover:bg-white/20 transition-all"
           >
             <div className="relative w-16 h-16 flex-shrink-0">
-              <Image
+              <ShimmerImage
                 src={post.image}
                 alt={post.title}
                 fill
@@ -134,7 +135,7 @@ export function MindblownSection({ posts }) {
       >
         <Link href={`/posts/${post.slug}`} className="block h-full">
           <div className="relative h-[220px] rounded-lg overflow-hidden mb-4">
-            <Image
+            <ShimmerImage
               src={post.image}
               alt={post.title}
               fill
@@ -204,7 +205,7 @@ export function QuickBitesSection({ posts }) {
             className="block bg-white/10 backdrop-blur-sm rounded-lg overflow-hidden hover:bg-white/20 transition-all group"
           >
             <div className="relative h-32">
-              <Image
+              <ShimmerImage
                 src={post.image}
                 alt={post.title}
                 fill
@@ -258,7 +259,7 @@ export function TrendingDebatesSection({ posts }) {
             >
               <div className="flex items-stretch min-w-0">
                 <div className="relative w-24 h-24 flex-shrink-0">
-                  <Image
+                  <ShimmerImage
                     src={post.image}
                     alt={post.title}
                     fill
@@ -391,7 +392,7 @@ export function AIFrontierSection({ posts }) {
             >
               <div className="overflow-hidden rounded-xl relative bg-white/10 backdrop-blur-sm hover:bg-white/20 transition">
                 <div className="relative h-24 sm:h-32 md:h-40">
-                  <Image
+                  <ShimmerImage
                     src={post.image}
                     alt={post.title}
                     fill

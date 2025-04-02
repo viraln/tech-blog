@@ -1,6 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useInView } from 'react-intersection-observer'
-import CompactCard from '../CompactCard'
 import Link from 'next/link'
 import Image from 'next/image'
 import { getRelativeTime } from '../../utils/dateUtils'
@@ -25,7 +24,6 @@ const processPrefetchBatch = async () => {
     // Use our batch fetch utility
     await fetchArticles(batch);
     batch.forEach(slug => prefetchedArticles.add(slug));
-    console.log(`Prefetched batch of ${batch.length} articles`);
   } catch (error) {
     console.error('Error prefetching article batch:', error);
   }
@@ -35,8 +33,8 @@ const processPrefetchBatch = async () => {
 const prefetchArticle = async (slug) => {
   if (typeof window === 'undefined') return
   
-  // Skip prefetching for placeholder slugs or already prefetched articles
-  if (slug.startsWith('placeholder-') || prefetchedArticles.has(slug)) {
+  // Skip prefetching for already prefetched articles or invalid slugs
+  if (!slug || slug.startsWith('placeholder-') || prefetchedArticles.has(slug)) {
     return;
   }
   
@@ -66,10 +64,23 @@ const prefetchArticle = async (slug) => {
   }
 }
 
+// Improved article card with better animations and loading states
 const ArticleCard = ({ post, index, observer }) => {
   const cardRef = useRef(null)
   const [isVisible, setIsVisible] = useState(false)
   const [isPrefetched, setIsPrefetched] = useState(false)
+  const [imageLoaded, setImageLoaded] = useState(false)
+  const [imageError, setImageError] = useState(false)
+
+  // Validate if this is a real article, not a mock placeholder
+  const isValidArticle = post && 
+    post.slug && 
+    !post.slug.startsWith('placeholder-') && 
+    !post.slug.startsWith('mock-post-') &&
+    post.title && 
+    post.image;
+
+  if (!isValidArticle) return null;
 
   // Set up intersection observer to detect when card is visible
   useEffect(() => {
@@ -92,17 +103,27 @@ const ArticleCard = ({ post, index, observer }) => {
     }
   }, [isVisible, isPrefetched, post.slug])
 
+  // Handle image load success
+  const handleImageLoad = () => {
+    setImageLoaded(true);
+  };
+
+  // Handle image load error
+  const handleImageError = () => {
+    setImageError(true);
+  };
+
   return (
     <div 
       ref={cardRef}
       className="article-card opacity-0 transform translate-y-4 transition-all duration-500"
       style={{ 
-        transitionDelay: `${index * 100}ms`,
+        transitionDelay: `${Math.min(index * 75, 400)}ms`,
       }}
     >
       <Link
         href={`/posts/${post.slug}`}
-        className="block h-full bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow group"
+        className="block h-full bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300 group"
         onMouseEnter={() => {
           if (!isPrefetched && post.slug) {
             prefetchArticle(post.slug)
@@ -110,22 +131,48 @@ const ArticleCard = ({ post, index, observer }) => {
           }
         }}
       >
-        <div className="relative h-48 overflow-hidden">
+        <div className="relative h-48 overflow-hidden bg-gray-100">
+          {!imageLoaded && !imageError && (
+            <div className="absolute inset-0 flex items-center justify-center bg-gray-100 animate-pulse">
+              <svg className="w-10 h-10 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </div>
+          )}
           <Image
             src={post.image}
             alt={post.title}
             fill
             sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-            className="object-cover group-hover:scale-105 transition-transform duration-500"
+            className={`object-cover transition-all duration-700 ${
+              imageLoaded ? 'opacity-100 group-hover:scale-105' : 'opacity-0'
+            }`}
             unoptimized={post.image.includes('unsplash.com') || post.image.includes('http')}
+            onLoad={handleImageLoad}
+            onError={handleImageError}
           />
-          <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/70 to-transparent">
+          <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent">
             <div className="text-xs text-white/90 flex items-center space-x-2">
-              <span>{post.readingTime || 3} min read</span>
+              <span className="flex items-center">
+                <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                {post.readingTime || 3} min
+              </span>
               <span>•</span>
               <span>{getRelativeTime(new Date(post.date))}</span>
             </div>
           </div>
+          {post.trending && (
+            <div className="absolute top-3 left-3 px-2 py-1 bg-red-500 text-white text-xs font-medium rounded-md">
+              Trending
+            </div>
+          )}
+          {post.isNew && !post.trending && (
+            <div className="absolute top-3 left-3 px-2 py-1 bg-green-500 text-white text-xs font-medium rounded-md">
+              New
+            </div>
+          )}
         </div>
         <div className="p-4 flex flex-col flex-grow">
           <div className="mb-2 flex">
@@ -145,28 +192,58 @@ const ArticleCard = ({ post, index, observer }) => {
   )
 }
 
-export default function InfiniteArticles({ posts = [], initialPosts = [], hasMore = true, isLoadingMore = false, onLoadMore = null }) {
+export default function InfiniteArticles({ 
+  posts = [], 
+  initialPosts = [], 
+  hasMore = true, 
+  isLoadingMore = false, 
+  onLoadMore = null,
+  loadInitialPosts = null,
+  initialLoadOnMount = false,
+  forceLoad = null
+}) {
   const [localPosts, setPosts] = useState([])
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(false)
   const [hasMoreState, setHasMore] = useState(hasMore)
   const [visiblePosts, setVisiblePosts] = useState([])
+  const [error, setError] = useState(null)
   const loadingRef = useRef(false)
+  const initialLoadDoneRef = useRef(false)
   const { ref: loadMoreRef, inView } = useInView({
     threshold: 0,
-    rootMargin: '200px'
+    rootMargin: '1000px'
   })
+
+  // Track failed page load attempts to prevent infinite loops
+  const failedPagesRef = useRef(new Set());
+  const maxConsecutiveFailures = useRef(0);
 
   // Initialize localPosts from initialPosts when component mounts
   useEffect(() => {
     if (initialPosts.length > 0 && localPosts.length === 0) {
+      // Filter out mock articles
+      const filteredPosts = initialPosts.filter(post => 
+        post && post.slug && !post.slug.startsWith('placeholder-') && !post.slug.startsWith('mock-post-')
+      );
+      
       // Sort by date (newest first) before setting
-      const sortedInitialPosts = [...initialPosts].sort((a, b) => 
+      const sortedInitialPosts = [...filteredPosts].sort((a, b) => 
         new Date(b.date) - new Date(a.date)
       );
+      
       setPosts(sortedInitialPosts);
     }
   }, [initialPosts, localPosts.length])
+
+  // Auto-load initial posts if initialLoadOnMount is true
+  useEffect(() => {
+    if (initialLoadOnMount && typeof loadInitialPosts === 'function' && !initialLoadDoneRef.current && posts.length === 0) {
+      console.log('Auto-loading initial posts on component mount');
+      initialLoadDoneRef.current = true;
+      loadInitialPosts();
+    }
+  }, [initialLoadOnMount, loadInitialPosts, posts.length]);
 
   // Update hasMoreState when hasMore prop changes
   useEffect(() => {
@@ -178,118 +255,348 @@ export default function InfiniteArticles({ posts = [], initialPosts = [], hasMor
     setLoading(isLoadingMore)
   }, [isLoadingMore])
 
+  // Filter and validate posts to ensure we only show real articles
+  const displayPosts = useMemo(() => {
+    let postsToDisplay = [];
+    
+    if (posts.length > 0) {
+      postsToDisplay = posts;
+    } else if (localPosts.length > 0) {
+      postsToDisplay = localPosts;
+    } else if (initialPosts.length > 0) {
+      postsToDisplay = initialPosts;
+    }
+    
+    // Filter out any mock posts or invalid entries
+    return postsToDisplay.filter(post => 
+      post && 
+      post.slug && 
+      !post.slug.startsWith('placeholder-') && 
+      !post.slug.startsWith('mock-post-') &&
+      post.title &&
+      post.image
+    );
+  }, [posts, localPosts, initialPosts]);
+
   const loadMorePosts = useCallback(async () => {
-    if (loading || loadingRef.current || !hasMoreState) return
+    if (loading || loadingRef.current || !hasMoreState) {
+      console.log(`Not loading more posts: loading=${loading}, loadingRef=${loadingRef.current}, hasMoreState=${hasMoreState}`);
+      return;
+    }
     
     // If a custom onLoadMore function is provided, use it
     if (typeof onLoadMore === 'function') {
-      onLoadMore()
-      return
+      console.log('Using custom onLoadMore function');
+      onLoadMore();
+      return;
+    }
+    
+    // Check if we've had too many consecutive failures
+    if (maxConsecutiveFailures.current >= 3) {
+      console.log(`Stopping after ${maxConsecutiveFailures.current} consecutive failed load attempts`);
+      setError('Too many failed attempts to load articles. Please try again later or use the manual load button.');
+      loadingRef.current = false;
+      setLoading(false);
+      return;
     }
     
     try {
-      loadingRef.current = true
-      setLoading(true)
+      loadingRef.current = true;
+      setLoading(true);
+      setError(null);
       
       // Use our cached fetch utility instead of direct fetch
-      const nextPage = page + 1
-      const data = await cachedFetch(`/api/articles/page/${nextPage}?limit=20`)
+      const nextPage = page + 1;
+      console.log(`Loading more articles page ${nextPage}, current displayed count: ${displayPosts.length}`);
       
-      if (!data.articles || data.articles.length === 0) {
-        setHasMore(false)
-      } else {
-        // Sort new articles by date (newest first) before adding to existing posts
-        const sortedNewArticles = [...data.articles].sort((a, b) => 
-          new Date(b.date) - new Date(a.date)
-        );
-        setPosts(prevPosts => {
-          // Merge and ensure all posts are sorted by date
-          const combinedPosts = [...prevPosts, ...sortedNewArticles];
-          return combinedPosts.sort((a, b) => new Date(b.date) - new Date(a.date));
-        });
-        setPage(nextPage)
-        // Update hasMore based on pagination data
-        setHasMore(data.pagination.hasMore)
+      // If we have no posts yet and loadInitialPosts is provided, use it first
+      if (displayPosts.length === 0 && typeof loadInitialPosts === 'function' && !initialLoadDoneRef.current) {
+        console.log('No posts yet, using loadInitialPosts function');
+        initialLoadDoneRef.current = true;
+        loadInitialPosts();
+        return;
+      }
+      
+      // Check if this page has repeatedly failed to load
+      if (failedPagesRef.current.has(nextPage)) {
+        console.log(`Page ${nextPage} previously failed to load, skipping to next page`);
+        setPage(nextPage);
+        setTimeout(() => {
+          loadingRef.current = false;
+          setLoading(false);
+          loadMorePosts();
+        }, 1000);
+        return;
+      }
+      
+      let data;
+      const timestamp = Date.now();
+      
+      try {
+        // Use direct fetch instead of cachedFetch to avoid any caching issues
+        // Add a random timestamp to ensure cache-busting
+        const response = await fetch(`/api/articles/page/${nextPage}?limit=30&nocache=${timestamp}`);
         
-        // Prefetch next page in advance
-        if (data.pagination.hasMore) {
-          setTimeout(() => {
-            cachedFetch(`/api/articles/page/${nextPage + 1}?limit=20`)
-              .catch(() => {/* silent fail */});
-          }, 1000);
+        // Check if response is actually JSON
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+          console.error(`API returned non-JSON response: ${contentType}`);
+          throw new Error('API returned invalid content type');
         }
+        
+        // Only parse as JSON if we have a valid response
+        if (response.ok) {
+          data = await response.json();
+          // Validate the response format
+          if (!data || typeof data !== 'object') {
+            console.error('API returned invalid data format:', data);
+            throw new Error('Invalid API response format');
+          }
+        } else {
+          console.error(`API returned error status: ${response.status}`);
+          throw new Error(`API error: ${response.status}`);
+        }
+        
+        console.log('Raw response data:', JSON.stringify(data).substring(0, 150) + '...');
+      } catch (fetchError) {
+        console.error('Error fetching from API:', fetchError);
+        setError('Error loading articles. Please try again.');
+        
+        // Mark this page as failed
+        failedPagesRef.current.add(nextPage);
+        maxConsecutiveFailures.current += 1;
+        
+        // Wait at least 3 seconds before allowing another attempt
+        setTimeout(() => {
+          loadingRef.current = false;
+          setLoading(false);
+        }, 3000);
+        return;
       }
+      
+      // Log information for debugging
+      console.log(`Page ${nextPage} loaded. Articles: ${data?.articles?.length}, Total: ${data?.pagination?.total}, Has more according to API: ${data?.pagination?.hasMore}`);
+      
+      // Check if the API returned any articles
+      if (!data.articles || !Array.isArray(data.articles) || data.articles.length === 0) {
+        console.log('No articles returned from API, setting hasMore=false');
+        setHasMore(false);
+        
+        // Wait at least 3 seconds before allowing another attempt
+        setTimeout(() => {
+          loadingRef.current = false;
+          setLoading(false);
+        }, 3000);
+        return;
+      } 
+      
+      // Filter out invalid/mock articles
+      const validArticles = data.articles.filter(article => 
+        article && 
+        article.slug && 
+        !article.slug.startsWith('placeholder-') && 
+        !article.slug.startsWith('mock-post-')
+      );
+      
+      console.log(`Found ${validArticles.length} valid articles out of ${data.articles.length}`);
+      
+      if (validArticles.length === 0) {
+        console.log('No valid articles after filtering, trying next page');
+        setPage(nextPage); // Increment the page number
+        
+        // Wait at least 2 seconds before trying the next page
+        setTimeout(() => {
+          loadingRef.current = false;
+          setLoading(false);
+          loadMorePosts(); // Try the next page automatically
+        }, 2000);
+        return;
+      }
+      
+      // Sort new articles by date (newest first) before adding to existing posts
+      const sortedNewArticles = [...validArticles].sort((a, b) => 
+        new Date(b.date) - new Date(a.date)
+      );
+      
+      // Log the first 3 new articles to help debug
+      console.log('First 3 new articles to be added:', 
+        sortedNewArticles.slice(0, 3).map(a => ({
+          title: a.title?.substring(0, 20) + '...',
+          slug: a.slug,
+          date: a.date
+        }))
+      );
+      
+      // Create a Set of existing slugs for faster duplicate detection
+      const existingSlugSet = new Set(localPosts.map(post => post.slug).filter(Boolean));
+      
+      // Filter out duplicates
+      const uniqueNewArticles = sortedNewArticles.filter(article => 
+        !existingSlugSet.has(article.slug)
+      );
+      
+      console.log(`Found ${uniqueNewArticles.length} unique articles after filtering duplicates`);
+      
+      if (uniqueNewArticles.length === 0) {
+        // Try one more page if no new unique articles
+        console.log('No unique articles found, skipping to next page');
+        setPage(nextPage);
+        
+        // Wait at least 2 seconds before trying the next page
+        setTimeout(() => {
+          loadingRef.current = false;
+          setLoading(false);
+          loadMorePosts(); // Try the next page automatically
+        }, 2000);
+        return;
+      }
+      
+      // Update the state with the new unique articles
+      setPosts(prevPosts => {
+        // Combine existing and new posts
+        const combinedPosts = [...prevPosts, ...uniqueNewArticles];
+        
+        // Sort all posts by date
+        const sortedPosts = combinedPosts.sort((a, b) => 
+          new Date(b.date || 0) - new Date(a.date || 0)
+        );
+        
+        console.log(`State update: Adding ${uniqueNewArticles.length} articles to existing ${prevPosts.length} for total of ${sortedPosts.length}`);
+        
+        return sortedPosts;
+      });
+      
+      // Only update the page state after successfully adding articles
+      setPage(nextPage);
+      
+      // Check if we should have more based on total
+      const totalArticlesCount = data.pagination?.total || 4450;
+      const currentCount = localPosts.length + uniqueNewArticles.length;
+      const shouldHaveMore = currentCount < totalArticlesCount;
+      
+      console.log(`Current articles after update: ${currentCount}, Total available: ${totalArticlesCount}, Should have more: ${shouldHaveMore}`);
+      
+      // FORCE hasMore to true until we get to at least 100 articles to ensure we keep loading
+      if (currentCount < 100 || shouldHaveMore) {
+        console.log(`Setting hasMore=true because we have ${currentCount} articles and should have ${totalArticlesCount}`);
+        setHasMore(true);
+      } else {
+        // Otherwise trust the API's hasMore flag
+        const apiHasMore = data.pagination?.hasMore || false;
+        console.log(`Setting hasMore=${apiHasMore} based on API response`);
+        setHasMore(apiHasMore);
+      }
+      
+      // If we got here successfully, reset the consecutive failures counter
+      maxConsecutiveFailures.current = 0;
+      
+      // Wait a bit before allowing more loads to avoid rapid successive load attempts
+      setTimeout(() => {
+        loadingRef.current = false;
+        setLoading(false);
+      }, 1000);
     } catch (error) {
-      console.error('Error loading more posts:', error)
-    } finally {
-      setLoading(false)
-      loadingRef.current = false
+      console.error('Error in loadMorePosts:', error);
+      setError('Unable to load more articles. Please try again later.');
+      
+      // Increment the failures counter
+      maxConsecutiveFailures.current += 1;
+      
+      // Wait before allowing more attempts
+      setTimeout(() => {
+        loadingRef.current = false;
+        setLoading(false);
+      }, 3000);
     }
-  }, [page, loading, hasMoreState, onLoadMore])
-
+  }, [page, loading, hasMoreState, onLoadMore, displayPosts.length, loadInitialPosts, localPosts])
+  
+  // Auto-loading effect with better stopping conditions
   useEffect(() => {
+    // Log the current state
+    console.log(`InfiniteArticles state: inView=${inView}, displayPosts=${displayPosts.length}, hasMoreState=${hasMoreState}, loading=${loading}, loadingRef=${loadingRef.current}`);
+    
+    // Make sure we're not in a loading state first
+    if (loading || loadingRef.current) {
+      console.log('Already loading, not triggering new load');
+      return;
+    }
+    
+    // IMPORTANT: Stop auto-loading after we have a reasonable number of articles
+    // This prevents continuous loading but still ensures we have enough articles
+    if (displayPosts.length > 250 && !window.forceLoadingMore) {
+      console.log('Already loaded 250+ articles, stopping auto-load. User can manually load more if needed.');
+      return;
+    }
+    
+    // Save the current scroll position before loading more content
+    let scrollPos = 0;
+    if (typeof window !== 'undefined') {
+      scrollPos = window.scrollY;
+    }
+    
+    // Load more posts when scrolling into view, but with a debounce
     if (inView) {
-      loadMorePosts()
+      console.log('Intersection observer triggered, loading more posts');
+      // Add a small delay to prevent multiple rapid calls
+      const timer = setTimeout(() => {
+        loadMorePosts();
+      }, 300);
+      return () => clearTimeout(timer);
     }
-  }, [inView, loadMorePosts])
-
-  // If no posts data is provided, use some placeholder posts
-  const displayPosts = posts.length > 0 ? posts : localPosts.length > 0 ? localPosts : initialPosts.length > 0 ? initialPosts : [
-    {
-      slug: 'placeholder-1',
-      title: 'Getting Started with Next.js: The Ultimate Guide',
-      excerpt: 'Learn how to build modern web applications with Next.js, from setup to deployment.',
-      date: new Date().toISOString(),
-      image: 'https://images.unsplash.com/photo-1555066931-4365d14bab8c?auto=format&fit=crop&w=800&q=60',
-      readingTime: 5,
-      category: 'Web Dev',
-      isNew: true
-    },
-    {
-      slug: 'placeholder-2',
-      title: 'React 18 Features That Will Change How You Write Components',
-      excerpt: 'Explore the latest features in React 18 and how they improve performance and developer experience.',
-      date: new Date(Date.now() - 86400000 * 2).toISOString(),
-      image: 'https://images.unsplash.com/photo-1633356122544-f134324a6cee?auto=format&fit=crop&w=800&q=60',
-      readingTime: 8,
-      category: 'React',
-      trending: true
-    },
-    {
-      slug: 'placeholder-3',
-      title: 'Machine Learning for JavaScript Developers',
-      excerpt: 'Discover how to implement machine learning in your web applications using TensorFlow.js.',
-      date: new Date(Date.now() - 86400000 * 4).toISOString(),
-      image: 'https://images.unsplash.com/photo-1655720031554-a929595ffad7?auto=format&fit=crop&w=800&q=60',
-      readingTime: 12,
-      category: 'AI & ML',
-      isNew: false
+    // Also load more posts when we have around 20 articles displayed
+    // This ensures we proactively fetch the next page before user reaches the bottom
+    else if (displayPosts.length > 0 && displayPosts.length <= 20 && hasMoreState && !loading && !loadingRef.current) {
+      console.log('Less than 20 articles displayed, proactively loading more');
+      loadMorePosts();
     }
-  ]
-
-  // Use visiblePosts state for prefetching
+    // ADDITIONAL TRIGGER: Force load more if we have less than 100 articles
+    else if (displayPosts.length > 0 && displayPosts.length < 100 && !loading && !loadingRef.current) {
+      console.log('Less than 100 articles displayed, forcing load more');
+      // Add a delay to avoid too many requests at once
+      const timer = setTimeout(() => {
+        loadMorePosts();
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [inView, loadMorePosts, displayPosts.length, hasMoreState, loading]);
+  
+  // Add a separate effect to handle scroll restoration
   useEffect(() => {
-    // Only prefetch if we have visible posts
-    if (visiblePosts.length === 0) return;
-    
-    // Create a stable reference to the current displayPosts
-    const currentPosts = [...displayPosts];
-    
-    // Prefetch articles that are visible
-    visiblePosts.forEach(index => {
-      if (currentPosts[index]?.slug) {
-        prefetchArticle(currentPosts[index].slug)
+    if (loading) {
+      // Save scroll position when loading starts
+      const scrollPos = window.scrollY;
+      
+      // Create a function to restore scroll after loading
+      const restoreScroll = () => {
+        if (!loading && scrollPos > 0) {
+          // Use requestAnimationFrame to make sure this happens after render
+          requestAnimationFrame(() => {
+            window.scrollTo({
+              top: scrollPos,
+              behavior: 'auto' // Use 'auto' to prevent another animation
+            });
+          });
+        }
+      };
+      
+      // Set up an observer to watch for height changes in the grid
+      const gridElement = document.querySelector('.infinite-scroll-container .grid');
+      if (gridElement) {
+        const resizeObserver = new ResizeObserver(() => {
+          restoreScroll();
+        });
+        
+        resizeObserver.observe(gridElement);
+        return () => resizeObserver.disconnect();
       }
-    })
-    // Remove displayPosts from dependency array to prevent infinite rerenders
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visiblePosts])
+    }
+  }, [loading]);
 
-  // Create an intersection observer for visibility detection
+  // Create a ref for the intersection observer
   const observer = useRef(
-    typeof IntersectionObserver !== 'undefined'
+    typeof window !== 'undefined' 
       ? new IntersectionObserver(
-          (entries) => {
+          entries => {
             entries.forEach(entry => {
               // When a card becomes visible
               if (entry.isIntersecting) {
@@ -315,59 +622,204 @@ export default function InfiniteArticles({ posts = [], initialPosts = [], hasMor
               }
             })
           },
-          { threshold: 0.1 }
+          { threshold: 0.15 }
         )
       : null
-  )
-  
-  // The useInView hook already handles the intersection observation
-  useEffect(() => {
-      // This effect is kept empty to maintain dependency arrays
-      // but we rely on the inView state from useInView hook
-    },
-    [loading, hasMoreState, loadMorePosts, loadMoreRef]
   )
 
   return (
     <div className="infinite-scroll-container">
       <div className="explore-section py-8">
         <div className="max-w-6xl mx-auto px-4">
-          <h2 className="text-2xl md:text-3xl font-bold mb-6 text-gray-800">
+          <h2 className="text-2xl md:text-3xl font-bold mb-6 text-gray-800 flex items-center">
             Explore More
+            <span className="ml-2 text-sm font-normal text-gray-500">
+              {displayPosts.length > 0 ? `(${displayPosts.length} articles)` : ''}
+            </span>
           </h2>
           
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {displayPosts.map((post, index) => (
-              <ArticleCard 
-                key={`article-card-${post.slug}-${index}`}
-                post={post}
-                index={index}
-                observer={observer.current}
-              />
-            ))}
-          </div>
+          {displayPosts.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {displayPosts.map((post, index) => (
+                <ArticleCard 
+                  key={`article-card-${post.slug}-${index}`}
+                  post={post}
+                  index={index}
+                  observer={observer.current}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="bg-white rounded-xl p-8 text-center shadow-sm">
+              <svg className="w-16 h-16 mx-auto text-gray-300 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1M19 20a2 2 0 002-2V8a2 2 0 00-2-2h-1M8 12h.01M12 12h.01M16 12h.01M12 16h.01" />
+              </svg>
+              <h3 className="text-lg font-medium text-gray-700 mb-2">No Articles Found</h3>
+              <p className="text-sm text-gray-500">We couldn't find any articles to display at this time. Please check back later.</p>
+            </div>
+          )}
           
-          {(hasMoreState || loading) && (
+          {error && (
+            <div className="mt-6 bg-red-50 border border-red-200 rounded-lg p-4 text-center">
+              <p className="text-red-600">{error}</p>
+              <button 
+                onClick={() => loadMorePosts()} 
+                className="mt-2 text-sm font-medium text-red-600 hover:text-red-800"
+              >
+                Try Again
+              </button>
+            </div>
+          )}
+          
+          {(hasMoreState || loading) && displayPosts.length > 0 && (
             <div 
               ref={loadMoreRef}
               className="loading-indicator flex justify-center my-8"
             >
               {loading ? (
-                <div className="loading-spinner"></div>
+                <div className="flex flex-col items-center">
+                  <div className="w-8 h-8 rounded-full border-2 border-indigo-600 border-t-transparent animate-spin mb-2"></div>
+                  <span className="text-sm text-gray-500">Loading more articles...</span>
+                </div>
               ) : (
                 <button 
-                  onClick={() => typeof onLoadMore === 'function' ? onLoadMore() : loadMorePosts()} 
-                  className="load-more-button px-6 py-2 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 transition-colors"
+                  onClick={() => {
+                    console.log('Load More button clicked');
+                    // Set global flag to indicate this was a button click
+                    window.forceLoadingMore = true;
+                    
+                    // Force hasMore to true to ensure loading continues
+                    setHasMore(true);
+                    
+                    // Skip ahead in pages to find new content
+                    setPage(page + 3);
+                    
+                    // Use forceLoad prop if available, otherwise fall back to onLoadMore
+                    if (typeof forceLoad === 'function') {
+                      console.log('Using forceLoad function from props');
+                      forceLoad();
+                      
+                      // Also set our internal state to ensure UI updates
+                      setLoading(true);
+                      
+                      // Set a backup timer to clear loading state if parent function doesn't do it
+                      setTimeout(() => {
+                        if (loading) {
+                          console.log('Backup timer: forceLoad function did not clear loading state');
+                          setLoading(false);
+                          window.forceLoadingMore = false;
+                        }
+                      }, 8000);
+                    } else if (typeof onLoadMore === 'function') {
+                      console.log('Calling parent onLoadMore function');
+                      onLoadMore();
+                      
+                      // Also set our internal state to ensure UI updates
+                      setLoading(true);
+                      
+                      // Set a backup timer to clear loading state if parent function doesn't do it
+                      setTimeout(() => {
+                        if (loading) {
+                          console.log('Backup timer: Parent function did not clear loading state');
+                          setLoading(false);
+                          window.forceLoadingMore = false;
+                        }
+                      }, 8000);
+                    } else {
+                      console.log('Using component loadMorePosts function');
+                      loadMorePosts();
+                      
+                      // Clear force loading flag after delay
+                      setTimeout(() => {
+                        window.forceLoadingMore = false;
+                      }, 5000);
+                    }
+                  }} 
+                  className="load-more-button px-6 py-2.5 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 transition-all duration-200 shadow-sm hover:shadow flex items-center"
                 >
-                  Load More
+                  <span>Load More Articles</span>
+                  <svg className="ml-2 w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
                 </button>
               )}
             </div>
           )}
           
-          {!hasMoreState && localPosts.length > 0 && (
-            <div className="text-center py-4 text-sm text-gray-500">
-              You've reached the end of the list
+          {!hasMoreState && !loading && displayPosts.length > 0 && (
+            <div className="text-center py-6 text-sm text-gray-500 border-t border-gray-100 mt-8">
+              <svg className="w-5 h-5 mx-auto mb-2 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+              </svg>
+              <span className="block">
+                {`Showing ${displayPosts.length} of 4,450 total articles`}
+              </span>
+              {/* Single consolidated load more button */}
+              <button 
+                onClick={() => {
+                  console.log('Bottom Load More button clicked');
+                  // Set global flag to indicate this was a button click
+                  window.forceLoadingMore = true;
+                  
+                  // Force hasMore to true to ensure loading continues
+                  setHasMore(true);
+                  
+                  // Skip ahead in pages to find new content
+                  setPage(page + 3);
+                  
+                  // Use forceLoad prop if available, otherwise fall back to onLoadMore
+                  if (typeof forceLoad === 'function') {
+                    console.log('Using forceLoad function from props for bottom button');
+                    forceLoad();
+                    
+                    // Also set our internal state to ensure UI updates
+                    setLoading(true);
+                    
+                    // Set a backup timer to clear loading state if parent function doesn't do it
+                    setTimeout(() => {
+                      if (loading) {
+                        console.log('Backup timer: forceLoad function did not clear loading state');
+                        setLoading(false);
+                        window.forceLoadingMore = false;
+                      }
+                    }, 8000);
+                  } else if (typeof onLoadMore === 'function') {
+                    console.log('Calling parent onLoadMore function from bottom button');
+                    onLoadMore();
+                    
+                    // Also set our internal state to ensure UI updates
+                    setLoading(true);
+                    
+                    // Set a backup timer to clear loading state if parent function doesn't do it
+                    setTimeout(() => {
+                      if (loading) {
+                        console.log('Backup timer: Parent function did not clear loading state');
+                        setLoading(false);
+                        window.forceLoadingMore = false;
+                      }
+                    }, 8000);
+                  } else {
+                    console.log('Using component loadMorePosts function from bottom button');
+                    loadMorePosts();
+                    
+                    // Clear force loading flag after delay
+                    setTimeout(() => {
+                      window.forceLoadingMore = false;
+                    }, 5000);
+                  }
+                }} 
+                className="mt-3 px-6 py-2.5 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 transition-all duration-200 shadow-sm hover:shadow"
+              >
+                Load More Articles
+              </button>
+            </div>
+          )}
+          
+          {/* Add a message when a substantial number of articles have been loaded */}
+          {hasMoreState && !loading && displayPosts.length > 250 && (
+            <div className="text-center mt-4 text-sm text-gray-500">
+              <p className="mb-1">📚 You've read a substantial collection of articles!</p>
+              <p className="text-xs">Click the button below to load more articles.</p>
             </div>
           )}
         </div>

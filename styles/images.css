@@ -1,0 +1,3 @@
+.article-image-wrapper { position: relative; overflow: hidden; border-radius: 0.5rem; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); }
+.article-image { width: 100%; height: auto; display: block; backface-visibility: hidden; transform: translateZ(0); }
+.article-image-attribution { text-align: center; font-size: 0.75rem; color: #6b7280; margin-top: 0.25rem; font-style: italic; }

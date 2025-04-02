@@ -1,0 +1,75 @@
+/* Fix for image flickering on hover */
+.img-container {
+  display: block;
+  overflow: hidden;
+  backface-visibility: hidden;
+  transform: translateZ(0);
+  will-change: transform;
+  transform-style: preserve-3d;
+  perspective: 1000;
+}
+
+.img-hover-fix {
+  width: 100%;
+  height: auto;
+  backface-visibility: hidden;
+  transform: translateZ(0);
+  will-change: transform;
+  transform-style: preserve-3d;
+  perspective: 1000;
+  transition: filter 0.5s cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+.img-container:hover .img-hover-fix {
+  filter: brightness(1.05);
+}
+
+/* Improved styling for Social Snippets */
+.social-snippet {
+  background-color: #f5f3ff;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  margin: 1.5rem 0;
+  border-left: 4px solid #8b5cf6;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.social-snippet-title {
+  font-weight: 600;
+  color: #7c3aed;
+  margin-bottom: 0.5rem;
+}
+
+.social-snippet-content {
+  color: #4b5563;
+  font-style: italic;
+}
+
+/* Improved styling for Expert Tips */
+.expert-tip {
+  background-color: #e0f2fe;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  margin: 1.5rem 0;
+  border-left: 4px solid #0ea5e9;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.expert-tip-title {
+  font-weight: 600;
+  color: #0284c7;
+  margin-bottom: 0.5rem;
+}
+
+.expert-tip-content {
+  color: #4b5563;
+}
+
+/* Attribution styling */
+.img-attribution {
+  text-align: center;
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin-top: 0.5rem;
+  font-style: italic;
+} 

@@ -5,12 +5,52 @@
 
 // In-memory request cache
 const cache = new Map();
-const CACHE_TTL = 60 * 1000; // 1 minute cache lifetime
+const CACHE_TTL = 5 * 60 * 1000; // Increase cache lifetime to 5 minutes
+const PRIORITY_CACHE_TTL = 15 * 60 * 1000; // 15 minutes for priority requests
 
 // Batch queue for article slug requests
 let batchQueue = [];
 let batchTimer = null;
 const BATCH_DELAY = 50; // 50ms delay to batch requests
+
+// Queue for limiting concurrent requests
+let requestQueue = [];
+const MAX_CONCURRENT_REQUESTS = 6; // Maximum number of concurrent requests
+let activeRequests = 0;
+
+// Track in-flight requests to avoid duplicates
+const inFlightRequests = new Map();
+
+// Process the request queue
+function processRequestQueue() {
+  // Process as many requests as we can (up to MAX_CONCURRENT_REQUESTS)
+  while (requestQueue.length > 0 && activeRequests < MAX_CONCURRENT_REQUESTS) {
+    const { execute } = requestQueue.shift();
+    activeRequests++;
+    execute().finally(() => {
+      activeRequests--;
+      processRequestQueue(); // Process next request when one completes
+    });
+  }
+}
+
+// Add a request to the queue
+function queueRequest(executeFunc) {
+  return new Promise((resolve, reject) => {
+    const execute = () => {
+      return executeFunc()
+        .then(resolve)
+        .catch(reject);
+    };
+    
+    requestQueue.push({ execute });
+    
+    // Start processing the queue if not already running
+    if (activeRequests < MAX_CONCURRENT_REQUESTS) {
+      processRequestQueue();
+    }
+  });
+}
 
 /**
  * Process the batch queue of article slugs
@@ -119,32 +159,84 @@ export function fetchArticles(slugs) {
 }
 
 /**
- * Optimized fetch with caching
+ * Optimized fetch with caching and priority support
  * @param {string} url - The URL to fetch
  * @param {Object} options - Fetch options
+ * @param {boolean} isPriority - Whether this is a priority request (longer TTL)
  * @returns {Promise<any>} - The response data
  */
-export function cachedFetch(url, options = {}) {
+export function cachedFetch(url, options = {}, isPriority = false) {
   const cacheKey = `${url}:${JSON.stringify(options)}`;
+  const currentTTL = isPriority ? PRIORITY_CACHE_TTL : CACHE_TTL;
   
   // Check cache first
   const cachedItem = cache.get(cacheKey);
-  if (cachedItem && Date.now() - cachedItem.timestamp < CACHE_TTL) {
-    return Promise.resolve(cachedItem.data);
+  if (cachedItem) {
+    const isExpired = Date.now() - cachedItem.timestamp > currentTTL;
+    
+    // If not expired, return cached data immediately
+    if (!isExpired) {
+      // If this is a priority request, update the timestamp to extend cache life
+      if (isPriority) {
+        cache.set(cacheKey, {
+          data: cachedItem.data,
+          timestamp: Date.now() // Refresh timestamp
+        });
+      }
+      return Promise.resolve(cachedItem.data);
+    }
+    
+    // If expired but we have an in-flight request, use the cached data temporarily
+    // while the new data is fetched in the background
+    if (isExpired && inFlightRequests.has(cacheKey)) {
+      console.log(`Using stale cache for ${url} while fresh data is being fetched`);
+      
+      // Refresh in the background without blocking the current request
+      inFlightRequests.get(cacheKey)
+        .catch(() => {/* silent fail on background refresh */});
+      
+      return Promise.resolve(cachedItem.data);
+    }
   }
   
-  // Otherwise, fetch and cache
-  return fetch(url, options)
-    .then(response => {
-      if (!response.ok) throw new Error(`Failed to fetch ${url}`);
-      return response.json();
-    })
-    .then(data => {
-      // Store in cache
-      cache.set(cacheKey, {
-        data,
-        timestamp: Date.now()
+  // Check if this exact request is already in-flight
+  if (inFlightRequests.has(cacheKey)) {
+    console.log(`Request for ${url} already in-flight, reusing promise`);
+    return inFlightRequests.get(cacheKey);
+  }
+  
+  // Queue the actual fetch operation to limit concurrent requests
+  const fetchPromise = queueRequest(() => {
+    // Add a small random delay to spread out requests and prevent thundering herd
+    const randomDelay = Math.random() * 100; // 0-100ms random delay
+    
+    return new Promise(resolve => setTimeout(resolve, isPriority ? 0 : randomDelay))
+      .then(() => fetch(url, options))
+      .then(response => {
+        if (!response.ok) throw new Error(`Failed to fetch ${url}`);
+        return response.json();
+      })
+      .then(data => {
+        // Store in cache
+        cache.set(cacheKey, {
+          data,
+          timestamp: Date.now()
+        });
+        
+        // Remove from in-flight requests
+        inFlightRequests.delete(cacheKey);
+        
+        return data;
+      })
+      .catch(error => {
+        // Remove from in-flight requests on error
+        inFlightRequests.delete(cacheKey);
+        throw error;
       });
-      return data;
-    });
+  });
+  
+  // Store this request as in-flight
+  inFlightRequests.set(cacheKey, fetchPromise);
+  
+  return fetchPromise;
 } 

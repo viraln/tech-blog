@@ -37,7 +37,7 @@ export default function Header() {
             </Link>
           </div>
           
-          {/* Desktop menu */}
+          {/* Desktop menu
           <div className="hidden md:flex items-center space-x-1">
             <Link 
               href="/topics/latest" 
@@ -60,7 +60,7 @@ export default function Header() {
             >
               🔥
             </a>
-          </div>
+          </div> */}
           
           {/* Mobile menu button */}
           <div className="md:hidden">

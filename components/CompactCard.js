@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
+import ShimmerImage from './ShimmerImage'
 import { getRelativeTime } from '../utils/dateUtils'
 
 export default function CompactCard({ post, index }) {
@@ -32,7 +33,7 @@ export default function CompactCard({ post, index }) {
       <article className="flex items-center space-x-4 p-4 bg-white rounded-xl hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1" itemScope itemType="https://schema.org/Article">
         <div className="relative flex-shrink-0">
           <div className="relative w-24 h-24">
-            <Image
+            <ShimmerImage
               src={post.image}
               alt={post.title}
               fill

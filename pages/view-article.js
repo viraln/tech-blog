@@ -38,7 +38,21 @@ export default function ViewArticle({ article }) {
             className="w-full h-auto rounded-lg"
           />
           {article.frontMatter.imageCredit && (
-            <p className="text-sm text-gray-500 mt-1">{article.frontMatter.imageCredit}</p>
+            <p className="text-sm text-gray-500 mt-1" dangerouslySetInnerHTML={{ __html: article.frontMatter.imageCredit
+              .replace(/\*/g, '')
+              .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, text, url) => {
+                // Add UTM parameters to Unsplash links
+                if (url.includes('unsplash.com')) {
+                  // Separate the URL from any query parameters that might already exist
+                  const [baseUrl, existingQuery] = url.split('?');
+                  const separator = existingQuery ? '&' : '?';
+                  const utmParams = `utm_source=trendiingz&utm_medium=referral`;
+                  return `<a href="${baseUrl}${separator}${utmParams}" target="_blank" rel="noopener noreferrer" class="text-indigo-500 hover:text-indigo-700 transition-colors">${text}</a>`;
+                }
+                // Return normal links unchanged
+                return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-indigo-500 hover:text-indigo-700 transition-colors">${text}</a>`;
+              })
+            }} />
           )}
         </div>
       )}

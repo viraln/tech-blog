@@ -1,73 +1,39 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import Head from 'next/head'
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import Header from '../components/Header'
 import TopicNav from '../components/home/TopicNav'
-// import NewsletterSection from '../components/home/NewsletterSection'
 import CommunitySection from '../components/home/CommunitySection'
-// import WatchSection from '../components/home/WatchSection'
 import NewArrivalsSection from '../components/home/NewArrivalsSection'
 import InfiniteArticles from '../components/home/InfiniteArticles'
 import { HotTakeSection, DailyDigestSection, MindblownSection, QuickBitesSection, TrendingDebatesSection, TechInsightsSection, AIFrontierSection, NicheTopicsSection, KnowledgeHubSection } from '../components/home/ViralSections'
 import Footer from '../components/layout/Footer'
 import CompactCard from '../components/CompactCard'
+import ShimmerImage from '../components/ShimmerImage'
 import { getArticleBySlug } from '../utils/articleUtils'
 import { topicCategories } from '../data/topics'
+import { cachedFetch } from '../utils/lazyFetch'
 
 // Subtopics data for each main topic - used for filtering
 const subTopics = {
   'tech': [
-    { id: 'web-development', name: 'Web Dev', icon: '🌐' },
+    { id: 'web-development', name: 'Web Development', icon: '🌐' },
     { id: 'mobile', name: 'Mobile', icon: '📱' },
-    { id: 'cloud', name: 'Cloud', icon: '☁️' },
-    { id: 'security', name: 'Security', icon: '🔒' },
-    { id: 'data-science', name: 'Data Science', icon: '📊' },
+    { id: 'cloud', name: 'Cloud Computing', icon: '☁️' },
+    { id: 'security', name: 'Cybersecurity', icon: '🔒' },
   ],
   'ai': [
     { id: 'machine-learning', name: 'Machine Learning', icon: '🧠' },
     { id: 'generative-ai', name: 'Generative AI', icon: '🎨' },
     { id: 'nlp', name: 'NLP', icon: '💬' },
-    { id: 'computer-vision', name: 'Computer Vision', icon: '👁️' },
-    { id: 'ai-ethics', name: 'AI Ethics', icon: '⚖️' },
   ],
   'science': [
     { id: 'physics', name: 'Physics', icon: '⚛️' },
     { id: 'astronomy', name: 'Astronomy', icon: '🔭' },
     { id: 'biology', name: 'Biology', icon: '🧬' },
-    { id: 'quantum', name: 'Quantum', icon: '🔄' },
-    { id: 'medicine', name: 'Medicine', icon: '🩺' },
   ],
-  'climate': [
-    { id: 'renewable-energy', name: 'Renewable Energy', icon: '🌞' },
-    { id: 'sustainability', name: 'Sustainability', icon: '♻️' },
-    { id: 'climate-action', name: 'Climate Action', icon: '🌊' },
-    { id: 'conservation', name: 'Conservation', icon: '🌱' },
-  ],
-  'business': [
-    { id: 'startups', name: 'Startups', icon: '🚀' },
-    { id: 'cryptocurrency', name: 'Crypto', icon: '₿' },
-    { id: 'finance', name: 'Finance', icon: '💰' },
-    { id: 'leadership', name: 'Leadership', icon: '👔' },
-  ],
-  'innovation': [
-    { id: 'metaverse', name: 'Metaverse', icon: '🌐' },
-    { id: 'web3', name: 'Web3', icon: '🔗' },
-    { id: 'biotechnology', name: 'Biotech', icon: '🧪' },
-    { id: 'space-tech', name: 'Space Tech', icon: '🚀' },
-  ],
-  'gaming': [
-    { id: 'console-gaming', name: 'Console', icon: '🎮' },
-    { id: 'pc-gaming', name: 'PC Gaming', icon: '🖥️' },
-    { id: 'mobile-gaming', name: 'Mobile Gaming', icon: '📱' },
-    { id: 'game-development', name: 'Game Dev', icon: '⚙️' },
-  ],
-  'lifestyle': [
-    { id: 'health', name: 'Health', icon: '💪' },
-    { id: 'food', name: 'Food', icon: '🍲' },
-    { id: 'travel', name: 'Travel', icon: '✈️' },
-    { id: 'fashion', name: 'Fashion', icon: '👕' },
-  ],
+  // Add other categories as needed
 };
 
 // Debug logging utility to prevent excessive console logs
@@ -275,6 +241,230 @@ export default function Home({ posts: serverPosts, hasMore, totalPosts }) {
   const [filteredPostsCount, setFilteredPostsCount] = useState(0)
   const [expandedTopics, setExpandedTopics] = useState([]) // Track expanded topic families for better filtering
 
+  // Track all available articles
+  const [allArticles, setAllArticles] = useState([])
+
+  // Filter posts based on user preferences if any are selected
+  const filteredPosts = useMemo(() => {
+    // Always sort posts by date, newest first, before any filtering
+    const sortedPosts = [...posts].sort((a, b) => {
+      return new Date(b.date) - new Date(a.date);
+    });
+    
+    // If no topics selected or not enough posts, return all posts
+    if (selectedTopics.length === 0 || sortedPosts.length < 100) {
+      return sortedPosts; // Show all posts sorted by date if no preferences selected
+    }
+
+    // Combine direct selected topics and expanded topics for better content coverage
+    const allTopicsToConsider = [...selectedTopics, ...expandedTopics]
+    
+    // Check if we should prioritize newest posts (user has selected trending or featured)
+    const showNewestPosts = selectedTopics.some(topic => 
+      topic === 'trending' || topic === 'featured'
+    );
+    
+    // If we're showing newest posts for trending/featured, return all posts
+    if (showNewestPosts) {
+      // If trending or featured is selected, return all posts sorted by date
+      return sortedPosts;
+    }
+    
+    let filtered = sortedPosts.filter(post => {
+      // Handle the new categories structure which is an array of objects
+      const postCategories = post.categories || [];
+      
+      // Extract all category names to an array for easier filtering
+      const categoryNames = postCategories.map(cat => {
+        return typeof cat === 'string' ? cat.toLowerCase() : (cat.name || '').toLowerCase();
+      });
+      
+      // Also check topics array
+      const postTopics = post.topics || [];
+      const topicNames = postTopics.map(topic => {
+        return typeof topic === 'string' ? topic.toLowerCase() : (topic.name || '').toLowerCase();
+      });
+      
+      // Include posts that match any selected category
+      const matchesAnyCategory = allTopicsToConsider.some(topic => {
+        const lowerTopic = topic.toLowerCase();
+        
+        // If trending/featured is selected along with other topics, include posts from any category
+        if ((lowerTopic === 'trending' || lowerTopic === 'featured') && showNewestPosts) {
+          return true;
+        }
+        
+        return (
+          // Check if it matches the main category
+          (post.category || '').toLowerCase() === lowerTopic ||
+          // Check in categories array
+          categoryNames.includes(lowerTopic) ||
+          // Check in topics array
+          topicNames.includes(lowerTopic) ||
+          // Handle special meta topics - only use these if we're not showing all newest posts
+          (!showNewestPosts && lowerTopic === 'trending' && post.metadata?.trending) ||
+          (!showNewestPosts && lowerTopic === 'featured' && post.metadata?.featured)
+        );
+      });
+      
+      return matchesAnyCategory;
+    });
+
+    // ALWAYS ensure we have at least 100 posts, regardless of filtering
+    if (filtered.length < 100) {
+      console.log(`Topic filtering returned only ${filtered.length} posts, ensuring minimum of 100 articles`);
+      
+      // Create a set of slugs already in the filtered list for faster lookups
+      const filteredSlugs = new Set(filtered.map(post => post.slug));
+      
+      // Add posts from sortedPosts that aren't already in filtered
+      const additionalPosts = sortedPosts.filter(post => !filteredSlugs.has(post.slug));
+      
+      // Calculate how many more posts we need
+      const postsNeeded = Math.min(100 - filtered.length, additionalPosts.length);
+      
+      // Add the additional posts needed
+      filtered = [...filtered, ...additionalPosts.slice(0, postsNeeded)];
+      
+      console.log(`Added ${postsNeeded} additional posts to reach minimum of 100 articles, now have ${filtered.length} posts`);
+      
+      // If we still don't have 100 posts somehow, just return all posts
+      if (filtered.length < 100 && sortedPosts.length >= 100) {
+        console.log('Still not enough filtered posts, returning all posts sorted by date');
+        return sortedPosts;
+      }
+    }
+
+    // Update filtered count for other components to use
+    // Using setTimeout to avoid state update during render
+    setTimeout(() => {
+      setFilteredPostsCount(filtered.length);
+    }, 0);
+    
+    return filtered;
+  }, [posts, selectedTopics, expandedTopics]);
+  
+  // Define newPosts from filtered posts
+  const newPosts = useMemo(() => {
+    if (!filteredPosts || filteredPosts.length === 0) return [];
+    
+    return filteredPosts.filter(post => {
+      const postDate = new Date(post.date);
+      const now = new Date();
+      const daysDiff = Math.floor((now - postDate) / (1000 * 60 * 60 * 24));
+      return daysDiff <= 7 && post.slug !== filteredPosts[0]?.slug;
+    });
+  }, [filteredPosts]);
+
+  // Generate slices of posts for viral sections - MOVED UP before it's used
+  const viralSectionSlices = useMemo(() => {
+    // Don't process until posts are available and client side is ready
+    if (!posts || posts.length === 0 || !isClientSideReady) {
+      return {
+        hotTake: [],
+        dailyDigest: [],
+        mindblown: [],
+        quickBites: [],
+        trending: [],
+        techInsights: [],
+        aiFrontier: [],
+        nicheTopics: [],
+        knowledgeHub: []
+      };
+    }
+    
+    // Only process if filteredPosts is defined
+    if (!filteredPosts) {
+      return {
+        hotTake: [],
+        dailyDigest: [],
+        mindblown: [],
+        quickBites: [],
+        trending: [],
+        techInsights: [],
+        aiFrontier: [],
+        nicheTopics: [],
+        knowledgeHub: []
+      };
+    }
+    
+    return {
+      hotTake: filteredPosts.slice(0, 3),
+      dailyDigest: filteredPosts.slice(3, 8),
+      mindblown: filteredPosts.slice(8, 11),
+      quickBites: filteredPosts.slice(11, 15),
+      trending: filteredPosts.slice(15, 18),
+      techInsights: filteredPosts.slice(18, 21),
+      aiFrontier: filteredPosts.slice(21, 24),
+      nicheTopics: filteredPosts.slice(24, 28),
+      knowledgeHub: filteredPosts.slice(28, 31)
+    }
+  }, [filteredPosts, isClientSideReady, posts]);
+
+  // Combined all available posts for filtering - without viralSectionSlices
+  useEffect(() => {
+    // Combine all posts from different sections
+    const combined = [
+      ...(posts || []),
+      ...(infinitePosts || [])
+    ];
+    
+    // Deduplicate by slug
+    const seen = new Set();
+    const uniqueArticles = combined.filter(post => {
+      if (!post || !post.slug || seen.has(post.slug)) return false;
+      seen.add(post.slug);
+      return true;
+    });
+    
+    setAllArticles(uniqueArticles);
+  }, [posts, infinitePosts]);
+
+  // Additional effect to add viral section posts once available
+  useEffect(() => {
+    if (!viralSectionSlices) return;
+    
+    setAllArticles(prevArticles => {
+      // Add posts from viral sections
+      const combined = [...prevArticles];
+      
+      Object.values(viralSectionSlices).forEach(sectionPosts => {
+        if (Array.isArray(sectionPosts)) {
+          combined.push(...sectionPosts);
+        }
+      });
+      
+      // Deduplicate by slug
+      const seen = new Set();
+      const uniqueArticles = combined.filter(post => {
+        if (!post || !post.slug || seen.has(post.slug)) return false;
+        seen.add(post.slug);
+        return true;
+      });
+      
+      return uniqueArticles;
+    });
+  }, [viralSectionSlices]);
+
+  // Additional effect to add newPosts once available
+  useEffect(() => {
+    if (!newPosts || newPosts.length === 0) return;
+    
+    setAllArticles(prevArticles => {
+      const combined = [...prevArticles, ...(newPosts || [])];
+      
+      // Deduplicate by slug
+      const seen = new Set();
+      const uniqueArticles = combined.filter(post => {
+        if (!post || !post.slug || seen.has(post.slug)) return false;
+        seen.add(post.slug);
+        return true;
+      });
+      
+      return uniqueArticles;
+    });
+  }, [newPosts]);
+
   // Load preferences from localStorage on initial render
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -347,6 +537,7 @@ export default function Home({ posts: serverPosts, hasMore, totalPosts }) {
 
   // Expand topics to include related ones if we don't have enough content
   useEffect(() => {
+    // Define the expandTopics function inside the effect to ensure it has access to the latest state
     const expandTopics = () => {
       if (selectedTopics.length === 0 || filteredPostsCount >= 100) return
       
@@ -373,104 +564,9 @@ export default function Home({ posts: serverPosts, hasMore, totalPosts }) {
       setExpandedTopics(newExpandedTopics)
     }
     
+    // Call the function
     expandTopics()
-  }, [selectedTopics, filteredPostsCount, getRelatedTopics])
-
-  // Filter posts based on user preferences if any are selected
-  const filteredPosts = useMemo(() => {
-    // Always sort posts by date, newest first, before any filtering
-    const sortedPosts = [...posts].sort((a, b) => {
-      return new Date(b.date) - new Date(a.date);
-    });
-    
-    if (selectedTopics.length === 0) {
-      return sortedPosts; // Show all posts sorted by date if no preferences selected
-    }
-
-    // Combine direct selected topics and expanded topics for better content coverage
-    const allTopicsToConsider = [...selectedTopics, ...expandedTopics]
-    
-    const filtered = sortedPosts.filter(post => {
-      // Handle the new categories structure which is an array of objects
-      const postCategories = post.categories || [];
-      
-      // Extract all category names to an array for easier filtering
-      const categoryNames = postCategories.map(cat => {
-        return typeof cat === 'string' ? cat.toLowerCase() : 
-               (cat.name ? cat.name.toLowerCase() : '');
-      }).filter(Boolean);
-      
-      // Get all topics and subtopics from the post
-      const postTopics = post.topics?.map(t => t.toLowerCase()) || [];
-      const postSubtopics = post.subtopics?.map(t => t.toLowerCase()) || [];
-      const postCategory = post.category?.toLowerCase() || '';
-      
-      // First check selected topics with higher priority
-      const matchesSelectedTopics = selectedTopics.some(topic => {
-        const topicLower = topic.toLowerCase();
-        
-        // Direct matches with topic name
-        if (postTopics.includes(topicLower) || 
-            postCategory === topicLower || 
-            categoryNames.includes(topicLower) ||
-            categoryNames.some(catName => catName.includes(topicLower))) {
-          return true;
-        }
-        
-        // Match subtopics for this topic from the topics.js data
-        // This allows filtering to include all subtopics when a main topic is selected
-        const topicSubtopics = subTopics[topic]?.map(sub => sub.id.toLowerCase()) || [];
-        if (topicSubtopics.some(subTopic => postSubtopics.includes(subTopic))) {
-          return true;
-        }
-        
-        // Special cases for featured/trending
-        if (topic === 'featured' && post.metadata?.featured) return true;
-        if (topic === 'trending' && post.metadata?.trending) return true;
-        
-        return false;
-      });
-      
-      // If matches directly selected topics, include it
-      if (matchesSelectedTopics) return true;
-      
-      // If we have expanded topics (for content fullness) and need more content, check those as well
-      // but with lower priority
-      if (expandedTopics.length > 0) {
-        return expandedTopics.some(topic => {
-          const topicLower = topic.toLowerCase();
-          
-          // Same matching logic but for expanded topics
-          if (postTopics.includes(topicLower) || 
-              postCategory === topicLower || 
-              categoryNames.includes(topicLower) ||
-              categoryNames.some(catName => catName.includes(topicLower))) {
-            return true;
-          }
-          
-          // Match subtopics for expanded topics too
-          const topicSubtopics = subTopics[topic]?.map(sub => sub.id.toLowerCase()) || [];
-          return topicSubtopics.some(subTopic => postSubtopics.includes(subTopic));
-        });
-      }
-      
-      return false;
-    });
-
-    // Save the count for potential expansion logic
-    setFilteredPostsCount(filtered.length);
-    
-    return filtered;
-  }, [posts, selectedTopics, expandedTopics]);
-
-  // Calculate new and trending posts from filtered posts
-  const newPosts = filteredPosts.filter(post => {
-    const postDate = new Date(post.date)
-    const now = new Date()
-    const daysDiff = (now - postDate) / (1000 * 60 * 60 * 24)
-    // Exclude the featured post (first post) from newPosts
-    return daysDiff <= 7 && post.slug !== filteredPosts[0]?.slug;
-  })
+  }, [selectedTopics, filteredPostsCount, getRelatedTopics]);
 
   // Create a balanced array of posts for the New Arrivals section
   // Target exactly 34 posts (or nearest even number possible)
@@ -565,7 +661,11 @@ export default function Home({ posts: serverPosts, hasMore, totalPosts }) {
   const newPostSlugs = new Set(newPosts.map(post => post.slug))
   
   const randomizedPosts = {
-    trending: filteredPosts.filter(post => post.metadata?.trending).slice(0, 5),
+    trending: selectedTopics.includes('trending')
+      // If trending is selected, show all posts sorted by date
+      ? filteredPosts.slice(0, 15)
+      // Otherwise, show only posts with trending metadata
+      : filteredPosts.filter(post => post.metadata?.trending).slice(0, 5),
   }
 
   useEffect(() => {
@@ -675,103 +775,400 @@ export default function Home({ posts: serverPosts, hasMore, totalPosts }) {
     }
   }
 
-  const loadMoreInfinite = useCallback(async () => {
-    if (isLoadingInfinite) return
-
-    setIsLoadingInfinite(true)
-    try {
-      const nextPage = infinitePage + 1
-      console.log(`Fetching more posts from page ${nextPage}`)
-      
-      // Try to fetch from Netlify function first (this works in production with static export)
-      let res;
-      try {
-        // Start with Netlify Functions path - will work in production
-        res = await fetch(`/.netlify/functions/posts?page=${nextPage}`);
-      } catch (fetchError) {
-        console.error('Network error fetching from Netlify function:', fetchError);
-        // Fall back to API route for local development
-        console.log('Trying API route path...');
-        res = await fetch(`/api/posts?page=${nextPage}`);
-      }
-      
-      if (!res.ok) {
-        console.error(`API request failed with status ${res.status}`);
-        const errorText = await res.text();
-        console.error('Error response:', errorText);
-        throw new Error(`API request failed with status ${res.status}: ${errorText}`);
-      }
-      
-      const data = await res.json()
-      console.log(`Received data for page ${nextPage}:`, { 
-        postsCount: data.posts?.length, 
-        hasMore: data.hasMore,
-        totalPostsFromAPI: data.totalPosts
-      })
-      
-      // If no posts returned or empty array, mark as no more posts
-      if (!data.posts || !Array.isArray(data.posts) || data.posts.length === 0) {
-        console.log('No more posts returned from API, marking hasMorePosts=false')
-        setHasMorePosts(false)
-        return
-      }
-
-      // Get all already displayed post slugs to filter against
-      const featuredSlug = posts[0]?.slug;
-      const displayedSlugs = new Set([
-        featuredSlug, 
-        ...newPosts.map(p => p.slug),
-        ...infinitePosts.map(p => p.slug)
-      ]);
-
-      // Filter to only show posts that haven't been displayed yet
-      const filteredPosts = data.posts.filter(post => !displayedSlugs.has(post.slug));
-      console.log(`Filtered posts: ${filteredPosts.length}/${data.posts.length} are new`)
-      
-      const enhancedPosts = filteredPosts.map(post => enhancePost(post));
-      
-      setInfinitePosts(prevPosts => [...prevPosts, ...enhancedPosts]);
-      setInfinitePage(nextPage);
-      
-      // Update hasMorePosts based on what API returns
-      setHasMorePosts(data.hasMore === true);
-    } catch (error) {
-      console.error('Error loading more infinite posts:', error)
-      
-      // Fallback: Generate some mock posts if API fails completely
-      if (infinitePage < 5) { // Only do this for a few pages to avoid infinite loops
-        console.log('Using fallback posts data');
-        
-        // Generate mock posts as fallback
-        const mockPosts = Array.from({ length: 10 }, (_, i) => ({
-          slug: `mock-post-${infinitePage}-${i}`,
-          title: `Example Post ${infinitePage}-${i} (Fallback)`,
-          excerpt: 'This is a fallback post when the API is unavailable.',
-          date: new Date().toISOString(),
-          image: '/images/Trendiingz-logo.jpg',
-          readingTime: 3,
-          category: 'Tech',
-          metadata: {
-            featured: false,
-            trending: i < 2
-          }
-        }));
-        
-        // Define the next page variable
-        const nextPage = infinitePage + 1;
-        
-        setInfinitePosts(prevPosts => [...prevPosts, ...mockPosts]);
-        setInfinitePage(nextPage);
-        setHasMorePosts(nextPage < 4); // Only show a few pages of fallback content
-      } else {
-        // After a few attempts, give up
-        setHasMorePosts(false);
-        alert('Error loading more posts. Please try again later.');
-      }
-    } finally {
-      setIsLoadingInfinite(false)
+  // Define uniqueInfinitePosts - This filters out duplicates shown in other sections
+  const uniqueInfinitePosts = useMemo(() => {
+    // Return empty array if allArticles isn't populated yet
+    if (!allArticles || allArticles.length === 0) {
+      return [];
     }
-  }, [infinitePage, isLoadingInfinite, posts, newPosts, infinitePosts]);
+    
+    // Get all post slugs from other sections to avoid duplicates
+    const displayedSlugs = new Set();
+    
+    // Add slugs from featured and trending posts
+    if (posts && posts.length > 0) {
+      posts.slice(0, 10).forEach(post => post && post.slug && displayedSlugs.add(post.slug));
+    }
+    
+    // Add slugs only from the first few posts of each viral section to avoid excessive filtering
+    if (viralSectionSlices) {
+      Object.values(viralSectionSlices).forEach(sectionPosts => {
+        if (Array.isArray(sectionPosts)) {
+          sectionPosts.slice(0, 3).forEach(post => post && post.slug && displayedSlugs.add(post.slug));
+        }
+      });
+    }
+    
+    // Filter to only include unique posts not shown elsewhere
+    let uniquePosts = allArticles.filter(post => 
+      post && post.slug && !displayedSlugs.has(post.slug)
+    );
+    
+    // If we have fewer than 24 unique posts, add more from allArticles even if they're duplicates
+    if (uniquePosts.length < 24 && allArticles.length >= 24) {
+      console.log(`Only found ${uniquePosts.length} unique posts, adding more posts to reach minimum of 24`);
+      // Sort allArticles by date
+      const sortedArticles = [...allArticles].sort((a, b) => new Date(b?.date || 0) - new Date(a?.date || 0));
+      
+      // Add more posts until we have at least 24
+      const postsNeeded = 24 - uniquePosts.length;
+      uniquePosts = [...uniquePosts, ...sortedArticles.slice(0, postsNeeded)];
+      
+      console.log(`Now showing ${uniquePosts.length} posts in infinite scroll section`);
+    }
+    
+    return uniquePosts.slice(0, 24); // Initial display is just 24 posts
+  }, [posts, viralSectionSlices, allArticles]);
+
+  // Function to load more articles for infinite scroll
+  const loadMoreInfinite = useCallback(async () => {
+    console.log("loadMoreInfinite called - attempt to load more articles");
+    
+    try {
+      // Only check loading state, not hasMorePosts when button is clicked 
+      if (isLoadingInfinite && !window.forceLoadingMore) {
+        console.log(`Already loading infinite articles: isLoadingInfinite=${isLoadingInfinite}`);
+        return;
+      }
+      
+      // IMPORTANT: Add stopping condition for automatic loading
+      // If we have a reasonable number of articles and this is NOT a manual button click, stop loading
+      if (infinitePosts.length > 250 && !window.forceLoadingMore) {
+        console.log(`Already loaded ${infinitePosts.length} articles. Stopping automatic loading. User can still click button to load more.`);
+        // Still allow manual loading via button clicks
+        setHasMorePosts(true);
+        return;
+      }
+      
+      // Force increment of page - we need to make sure we're always trying a new page
+      const nextInfinitePage = window.forceLoadingMore ? 
+        infinitePage + 5 : // Skip ahead when force loading to find new content
+        infinitePage + 1;
+      
+      console.log(`Attempting to load page ${nextInfinitePage}, current articles: ${infinitePosts.length}`);
+      
+      const cacheKey = `loading_page_${nextInfinitePage}`;
+      
+      // Mark as loading this page
+      window[cacheKey] = true;
+      setIsLoadingInfinite(true);
+      
+      // Use direct fetch with cache busting
+      const timestamp = Date.now();
+      const fetchUrl = `/api/articles/page/${nextInfinitePage}?limit=30&nocache=${timestamp}`;
+      console.log(`Fetching from URL: ${fetchUrl}`);
+      
+      let data;
+      try {
+        // ... rest of the fetch code ...
+        const response = await fetch(fetchUrl);
+        
+        // Check for valid JSON response
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+          console.error(`API returned non-JSON response: ${contentType}`);
+          throw new Error('API returned invalid content type');
+        }
+        
+        // Check if status is OK
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        // Parse response
+        data = await response.json();
+        
+        // Validate data structure
+        if (!data || typeof data !== 'object' || !Array.isArray(data.articles)) {
+          console.error('Invalid API response structure:', data);
+          throw new Error('Invalid API response structure');
+        }
+        
+        console.log('Raw response data:', JSON.stringify(data).substring(0, 150) + '...');
+      } catch (fetchError) {
+        console.error('Error fetching articles:', fetchError);
+        // Continue with an empty response
+        data = { articles: [], pagination: { hasMore: true, total: 4450 } };
+        
+        // Add a 5 second delay before clearing loading flags to prevent rapid retries
+        setTimeout(() => {
+          window[cacheKey] = false;
+          setIsLoadingInfinite(false);
+        }, 5000);
+        return;
+      }
+      
+      // Clear loading flag for this page after a delay to prevent rapid retries
+      setTimeout(() => {
+        window[cacheKey] = false;
+      }, 2000);
+      
+      // Log debug information
+      console.log(`Loading infinite articles page ${nextInfinitePage}. Got ${data?.articles?.length} articles. API says hasMore: ${data?.pagination?.hasMore}, total articles: ${data?.pagination?.total}`);
+      
+      if (!data || !data.articles || data.articles.length === 0) {
+        console.log(`No articles returned for page ${nextInfinitePage}, but we know we should have more. Setting hasMorePosts=true anyway.`);
+        // BYPASS: Set hasMorePosts to true anyway if we haven't loaded many articles yet
+        if (infinitePosts.length < 100) {
+          setHasMorePosts(true);
+          
+          // Try next page since this one failed
+          setInfinitePage(nextInfinitePage);
+          
+          // Try again after a delay
+          setTimeout(() => {
+            setIsLoadingInfinite(false);
+            loadMoreInfinite();
+          }, 3000); // Increase delay to 3 seconds to avoid rapid retries
+          return;
+        } else {
+          setHasMorePosts(false);
+          setIsLoadingInfinite(false);
+          return;
+        }
+      } 
+      
+      // Filter out any mock or placeholder articles
+      const validArticles = data.articles.filter(article => 
+        article && 
+        article.slug && 
+        !article.slug.startsWith('placeholder-') && 
+        !article.slug.startsWith('mock-post-')
+      );
+      
+      console.log(`Found ${validArticles.length} valid articles out of ${data.articles.length}`);
+      
+      if (validArticles.length === 0) {
+        console.log('No valid articles after filtering. Setting hasMorePosts=true anyway to try again.');
+        // BYPASS: Set hasMorePosts to true anyway if we haven't loaded many articles yet
+        if (infinitePosts.length < 100) {
+          setHasMorePosts(true);
+          
+          // Try with the next page since this one failed
+          setInfinitePage(nextInfinitePage);
+          
+          // Add a small delay before trying next page
+          setTimeout(() => {
+            setIsLoadingInfinite(false);
+            loadMoreInfinite();
+          }, 3000); // Increase delay to 3 seconds
+          return;
+        } else {
+          setHasMorePosts(false);
+          setIsLoadingInfinite(false);
+          return;
+        }
+      }
+      
+      // Log the first few articles to help debug
+      console.log('First 3 new articles:', 
+        validArticles.slice(0, 3).map(a => ({
+          title: a.title?.substring(0, 20) + '...',
+          slug: a.slug,
+          date: a.date
+        }))
+      );
+      
+      // Create a Set of existing slugs for faster duplicate detection
+      const existingIds = new Set(infinitePosts.map(p => p?.slug).filter(Boolean));
+      const newUniqueArticles = validArticles.filter(article => !existingIds.has(article.slug));
+      
+      console.log(`Found ${newUniqueArticles.length} unique articles after duplicate check`);
+      
+      // CRITICAL FIX: Even if no new unique articles are found, update the page number
+      // and try again with the next page instead of stopping
+      if (newUniqueArticles.length === 0) {
+        console.log('No unique articles after filtering duplicates. Moving to next page...');
+        
+        // Always increment page number, even when no new articles are found
+        setInfinitePage(nextInfinitePage);
+        
+        // Always set hasMorePosts to true to allow continued loading
+        setHasMorePosts(true);
+        
+        // Clear loading state after delay
+        setTimeout(() => {
+          setIsLoadingInfinite(false);
+          window[cacheKey] = false;
+          
+          // Auto-retry with next page after a delay if this was a force load
+          if (window.forceLoadingMore) {
+            setTimeout(() => {
+              loadMoreInfinite();
+            }, 1000);
+          }
+        }, 1000);
+        return;
+      }
+      
+      // Sort by date (newest first)
+      const updatedPosts = [...infinitePosts, ...newUniqueArticles].sort(
+        (a, b) => new Date(b?.date || 0) - new Date(a?.date || 0)
+      );
+      
+      // Log what we're adding to the state
+      console.log(`State update: Adding ${newUniqueArticles.length} articles to existing ${infinitePosts.length} for total of ${updatedPosts.length}`);
+      
+      // Update the state - force a new array reference to ensure React detects the change
+      setInfinitePosts(updatedPosts);
+      
+      // Update page number
+      setInfinitePage(nextInfinitePage);
+      
+      // We should have more posts if we haven't reached the total yet
+      const totalPosts = data.pagination?.total || 4450;
+      
+      // IMPORTANT: Always set hasMorePosts to true until we reach at least 1000 articles
+      // This ensures we can keep loading more articles
+      const shouldHaveMore = updatedPosts.length < totalPosts;
+      
+      console.log(`Current infinite articles: ${updatedPosts.length}, Total available: ${totalPosts}, Should have more: ${shouldHaveMore}`);
+      
+      // Override the API's hasMore flag if we know there should be more
+      if (updatedPosts.length < 250 || shouldHaveMore) {
+        console.log(`Setting hasMorePosts=true because we have ${updatedPosts.length} articles and should have ${totalPosts}`);
+        setHasMorePosts(true);
+      } else {
+        // Even here, we still set hasMorePosts to true so the button remains visible
+        // but we'll add indicators in the UI to show we've loaded a reasonable amount
+        console.log(`We have loaded ${updatedPosts.length} articles, which is a reasonable amount. Showing button but marking as complete.`);
+        setHasMorePosts(true);
+      }
+      
+      // Wait a moment to ensure state is updated before clearing loading state
+      setTimeout(() => {
+        setIsLoadingInfinite(false);
+      }, 2000); // Increase to 2 seconds
+      
+      // ALWAYS prefetch the next page if we haven't loaded most articles
+      const shouldPrefetch = updatedPosts.length < 1000;
+      
+      if (shouldPrefetch) {
+        console.log(`Prefetching next page ${nextInfinitePage + 1}`);
+        setTimeout(() => {
+          fetch(`/api/articles/page/${nextInfinitePage + 1}?limit=30&nocache=${Date.now()}`)
+            .catch(() => {/* silent fail */});
+        }, 3000); // Increased to 3 seconds
+      }
+    } catch (error) {
+      console.error('Error loading more infinite articles:', error);
+      
+      // Add a delay before clearing the loading state to prevent rapid retries
+      setTimeout(() => {
+        setIsLoadingInfinite(false);
+      }, 3000);
+      
+      // Don't set hasMorePosts to false on error - retry on next attempt
+      // BYPASS: Set hasMorePosts to true anyway if we haven't loaded many articles yet
+      if (infinitePosts.length < 100) {
+        console.log(`Error occurred, but setting hasMorePosts=true anyway because we've only loaded ${infinitePosts.length} articles`);
+        setHasMorePosts(true);
+      }
+    }
+  }, [infinitePosts, infinitePage, hasMorePosts, isLoadingInfinite]);
+
+  // Track when the last load request was made to debounce multiple calls
+  const lastLoadTimeRef = useRef(0);
+  const DEBOUNCE_INTERVAL = 2000; // Minimum time between consecutive loads (2 seconds)
+
+  // Update useEffect to check if we need to load more posts based on current count
+  useEffect(() => {
+    // Skip if already loading
+    if (isLoadingInfinite) return;
+    
+    // Debounce check - don't make requests too frequently
+    const now = Date.now();
+    if (now - lastLoadTimeRef.current < DEBOUNCE_INTERVAL) {
+      console.log('Debouncing load request - too soon since last request');
+      return;
+    }
+    
+    // Calculate how many more articles should be available based on the preload cache data
+    const totalArticlesFromConsole = 4450; // The number from the console logs - this is our expected total
+    const currentArticleCount = infinitePosts.length;
+    const percentLoaded = Math.round((currentArticleCount / totalArticlesFromConsole) * 100);
+    
+    console.log(`Article loading progress: ${percentLoaded}% (${currentArticleCount}/${totalArticlesFromConsole})`);
+    
+    let shouldLoad = false;
+    let delay = 0;
+    
+    // ALWAYS ensure we have at least 100 articles loaded (high priority)
+    if (currentArticleCount < 100) {
+      console.log(`Only loaded ${currentArticleCount} articles, loading more to reach minimum of 100`);
+      shouldLoad = true;
+      delay = 500;
+    }
+    // If we've shown less than 25% of the available articles (medium priority)
+    else if (percentLoaded < 25) {
+      console.log(`Only loaded ${percentLoaded}% of articles (${currentArticleCount}/${totalArticlesFromConsole}). Loading more...`);
+      shouldLoad = true;
+      delay = 800;
+    }
+    // If we've shown at least 100 articles but less than total available (low priority)
+    else if (currentArticleCount >= 100 && percentLoaded < 100) {
+      shouldLoad = true;
+      delay = 2000;
+    }
+    
+    // Execute the load if needed
+    if (shouldLoad && hasMorePosts) {
+      lastLoadTimeRef.current = now;
+      const loadMoreTimer = setTimeout(() => {
+        loadMoreInfinite();
+      }, delay);
+      
+      return () => clearTimeout(loadMoreTimer);
+    }
+  }, [infinitePosts.length, isLoadingInfinite, hasMorePosts, loadMoreInfinite]);
+
+  // Add a manual override function for when the user sees "You've reached the end" message
+  const forceLoadMoreArticles = useCallback(() => {
+    console.log("Force-loading more articles despite 'end of articles' message");
+    
+    // Reset the loading state to make sure we aren't stuck
+    setIsLoadingInfinite(false);
+    
+    // Reset the hasMorePosts state to true
+    setHasMorePosts(true);
+    
+    // Skip ahead 5 pages to try to find new content
+    const nextPage = infinitePage + 5;
+    setInfinitePage(nextPage);
+    
+    // Clear any cached loading flags that might be preventing new requests
+    for (let i = 1; i <= nextPage + 10; i++) {
+      const cacheKey = `loading_page_${i}`;
+      if (window[cacheKey]) {
+        console.log(`Clearing cached loading flag for page ${i}`);
+        window[cacheKey] = false;
+      }
+    }
+    
+    // Add additional flag to indicate this is a forced load
+    window.forceLoadingMore = true;
+    
+    // Add a delay before attempting to load more
+    setTimeout(() => {
+      loadMoreInfinite();
+      
+      // Clear force loading flag after a delay
+      setTimeout(() => {
+        window.forceLoadingMore = false;
+      }, 5000);
+    }, 300); // Reduced from 1000ms to 300ms for faster response
+  }, [infinitePage, loadMoreInfinite, setIsLoadingInfinite, setHasMorePosts, setInfinitePage]);
+
+  // Install the forceLoadMoreArticles function on window for debugging
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.forceLoadMoreArticles = forceLoadMoreArticles;
+      
+      return () => {
+        window.forceLoadMoreArticles = null;
+      };
+    }
+  }, [forceLoadMoreArticles]);
 
   const siteTitle = 'Trendiingz - Latest Tech & Lifestyle Trends'
   const siteDescription = 'Explore the cutting-edge of technology, digital lifestyle, and cultural innovations at Trendiingz. Get expert analysis, in-depth coverage, and actionable insights on emerging trends.'
@@ -801,144 +1198,48 @@ export default function Home({ posts: serverPosts, hasMore, totalPosts }) {
     }
   }, []);
 
-  // Pre-slice the posts for each viral section to avoid repeated calculations
-  const viralSectionSlices = useMemo(() => {
-    // Don't try to slice if filteredPosts is empty or undefined
-    if (!filteredPosts || filteredPosts.length === 0) {
-      return {
-        hotTake: [],
-        dailyDigest: [],
-        mindblown: [],
-        quickBites: [],
-        trending: [],
-        techInsights: [],
-        aiFrontier: [],
-        nicheTopics: [],
-        knowledgeHub: []
-      };
-    }
-    
-    return {
-      hotTake: filteredPosts.slice(0, 3),
-      dailyDigest: filteredPosts.slice(3, 8),
-      mindblown: filteredPosts.slice(8, 11),
-      quickBites: filteredPosts.slice(11, 15),
-      trending: filteredPosts.slice(15, 18),
-      techInsights: filteredPosts.slice(18, 21),
-      aiFrontier: filteredPosts.slice(21, 24),
-      nicheTopics: filteredPosts.slice(24, 28),
-      knowledgeHub: filteredPosts.slice(28, 31)
-    }
-  }, [filteredPosts])
-
   // Prefetch popular articles when component mounts
   const prefetchPopularArticles = async (articles) => {
-    // Only run on client side
-    if (typeof window === 'undefined') return;
+    if (!articles || articles.length === 0) return;
     
-    debugLog('Prefetching', { articleCount: articles.length });
+    // Prioritize the first few articles since they're most likely to be clicked
+    const highPriorityArticles = articles.slice(0, 3);
+    const regularArticles = articles.slice(3);
     
-    // Use requestIdleCallback to not block the main thread
-    if (window.requestIdleCallback) {
-      window.requestIdleCallback(() => {
-        prefetchBatch(articles);
-      });
-    } else {
-      // Fallback for browsers that don't support requestIdleCallback
-      setTimeout(() => {
-        prefetchBatch(articles);
-      }, 1);
+    // Prefetch high priority articles first (both router and API data)
+    for (const article of highPriorityArticles) {
+      try {
+        // Router prefetch
+        window.next.router.prefetch(`/posts/${article.slug}`);
+        
+        // Data prefetch with priority
+        const response = await cachedFetch(`/api/articles/${article.slug}`, {}, true);
+        debugLog(`Prefetched high priority article: ${article.slug}`);
+      } catch (err) {
+        console.error(`Error prefetching article ${article.slug}:`, err);
+      }
     }
+    
+    // Then prefetch the rest with lower priority
+    prefetchBatch(regularArticles);
   };
-  
-  // Prefetch a batch of articles
+
+  // Prefetch a batch of articles (lower priority)
   const prefetchBatch = async (articles) => {
-    // Limit to first 8 articles and split into batches
-    const batch1 = articles.slice(0, 3);
-    const batch2 = articles.slice(3, 6);
-    const batch3 = articles.slice(6, 8);
+    if (!articles || articles.length === 0) return;
     
-    // Process first batch immediately
-    Promise.all(
-      batch1.map(async (article) => {
-        try {
-          // Prefetch the page
-          if (window.next && window.next.router) {
-            window.next.router.prefetch(`/posts/${article.slug}`);
-          }
-          
-          // Prefetch the data using our API endpoint
-          try {
-            const response = await fetch(`/api/articles/${article.slug}`);
-            if (response.ok) {
-              debugLog('Prefetch success', article.slug);
-            }
-          } catch (error) {
-            // Silently fail - this is just prefetching
-            debugLog('Prefetch warning', `Non-critical prefetch error for ${article.slug}: ${error.message}`);
-          }
-        } catch (err) {
-          // Ignore errors during prefetching
-          debugLog('Prefetch error', `Error prefetching ${article.slug}: ${err}`);
-        }
-      })
-    );
-    
-    // Process second batch after a delay
-    setTimeout(() => {
-      Promise.all(
-        batch2.map(async (article) => {
-          try {
-            // Prefetch the page
-            if (window.next && window.next.router) {
-              window.next.router.prefetch(`/posts/${article.slug}`);
-            }
-            
-            // Prefetch the data using our API endpoint
-            try {
-              const response = await fetch(`/api/articles/${article.slug}`);
-              if (response.ok) {
-                debugLog('Prefetch success', article.slug);
-              }
-            } catch (error) {
-              // Silently fail - this is just prefetching
-              debugLog('Prefetch warning', `Non-critical prefetch error for ${article.slug}: ${error.message}`);
-            }
-          } catch (err) {
-            // Ignore errors during prefetching
-            debugLog('Prefetch error', `Error prefetching ${article.slug}: ${err}`);
-          }
-        })
-      );
-    }, 1000); // 1 second delay
-    
-    // Process third batch after a longer delay
-    setTimeout(() => {
-      Promise.all(
-        batch3.map(async (article) => {
-          try {
-            // Prefetch the page
-            if (window.next && window.next.router) {
-              window.next.router.prefetch(`/posts/${article.slug}`);
-            }
-            
-            // Prefetch the data using our API endpoint
-            try {
-              const response = await fetch(`/api/articles/${article.slug}`);
-              if (response.ok) {
-                debugLog('Prefetch success', article.slug);
-              }
-            } catch (error) {
-              // Silently fail - this is just prefetching
-              debugLog('Prefetch warning', `Non-critical prefetch error for ${article.slug}: ${error.message}`);
-            }
-          } catch (err) {
-            // Ignore errors during prefetching
-            debugLog('Prefetch error', `Error prefetching ${article.slug}: ${err}`);
-          }
-        })
-      );
-    }, 2000); // 2 second delay
+    // For regular prefetching, we do it in batches and with a delay
+    for (const article of articles) {
+      try {
+        // Router prefetch
+        window.next.router.prefetch(`/posts/${article.slug}`);
+        
+        // Data prefetch (regular priority)
+        const response = await cachedFetch(`/api/articles/${article.slug}`, {}, false);
+      } catch (err) {
+        // Silent fail for batch prefetching
+      }
+    }
   };
 
   // Use in your component
@@ -962,7 +1263,7 @@ export default function Home({ posts: serverPosts, hasMore, totalPosts }) {
       <Head>
         <title>{siteTitle}</title>
         <meta name="description" content={siteDescription} />
-        <meta name="keywords" content="tech trends, lifestyle, culture, technology news, trending topics, digital trends, AI innovations, metaverse, web3, cryptocurrency" />
+        <meta name="keywords" content="trendings, trendiingz, tech trends, lifestyle, culture, technology news, trending topics, digital trends, AI innovations, metaverse, web3, cryptocurrency" />
         
         {/* Open Graph */}
         <meta property="og:title" content={siteTitle} />
@@ -1265,6 +1566,36 @@ export default function Home({ posts: serverPosts, hasMore, totalPosts }) {
               display: none;
             }
           }
+          
+          /* Featured highlight styles */
+          .featured-highlight {
+            border: 2px solid #4f46e5;
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 12px rgba(79, 70, 229, 0.15);
+            padding: 1rem;
+            margin-top: 0.5rem;
+            margin-bottom: 1rem;
+            background-color: rgba(79, 70, 229, 0.03);
+            position: relative;
+            overflow: hidden;
+          }
+          
+          .featured-highlight::before {
+            position: absolute;
+            top: 0.5rem;
+            right: 0.5rem;
+            background-color:rgb(112, 105, 239);
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            z-index: 10;
+          }
+          
+          .featured-highlight h2 {
+            color: #4f46e5;
+          }
         `}</style>
       </Head>
 
@@ -1275,38 +1606,6 @@ export default function Home({ posts: serverPosts, hasMore, totalPosts }) {
           selectedTopics={selectedTopics} 
           onCategorySelect={handleToggleTopic}
         />
-
-        {/* Preferences Toggle Button */}
-        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 mb-4">
-          <button 
-            onClick={() => setShowPreferences(!showPreferences)}
-            className="flex items-center text-indigo-600 font-medium hover:text-indigo-800 transition-colors"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-            </svg>
-            {showPreferences ? 'Hide Preferences' : 'Customize My Feed'}
-          </button>
-        </div>
-
-        {/* Preferences UI */}
-        {showPreferences && (
-          <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 mb-6">
-            <UserPreferencesSection 
-              availableTopics={availableTopics}
-              selectedTopics={selectedTopics}
-              onToggleTopic={handleToggleTopic}
-            />
-            
-            {/* Debug Information - Shows expanded topics for content fullness */}
-            <DebugCategoriesInfo 
-              posts={posts}
-              selectedTopics={selectedTopics}
-              expandedTopics={expandedTopics}
-              filteredPostsCount={filteredPostsCount}
-            />
-          </div>
-        )}
 
         <main className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8">
           {/* Primary H1 heading for the website - hidden visually but available for SEO */}
@@ -1363,7 +1662,7 @@ export default function Home({ posts: serverPosts, hasMore, totalPosts }) {
                   onLoadMore={loadMoreNewArrivals}
                   totalNewPosts={totalPosts}
                   displayCount={balancedNewPosts.length}
-                  className="post-count-mobile-hidden"
+                  className={`post-count-mobile-hidden ${selectedTopics.includes('featured') ? 'featured-highlight' : ''}`}
                 />
               )}
 
@@ -1429,6 +1728,7 @@ export default function Home({ posts: serverPosts, hasMore, totalPosts }) {
           <div className="mt-6 sm:mt-8 md:mt-12">
             <InfiniteArticles 
               posts={infinitePosts}
+              initialPosts={uniqueInfinitePosts || []}
               hasMore={hasMorePosts}
               isLoadingMore={isLoadingInfinite}
               onLoadMore={loadMoreInfinite}
@@ -1462,7 +1762,7 @@ function FeaturedPost({ post }) {
   return (
     <Link href={`/posts/${post.slug}`} className="group block rounded-xl overflow-hidden shadow-md hover:shadow-lg transition-shadow">
       <div className="relative h-[220px] sm:h-[300px] md:h-[350px] lg:h-[400px] overflow-hidden">
-        <Image
+        <ShimmerImage
           src={post.image}
           alt={post.title}
           fill
@@ -1534,7 +1834,7 @@ function TrendingSection({ posts }) {
             className="group flex items-start gap-2 sm:gap-3 p-1.5 sm:p-2 rounded-lg hover:bg-gray-50 transition-colors hover-effect"
           >
             <div className="flex-shrink-0 w-14 h-14 sm:w-20 sm:h-20 relative rounded-md overflow-hidden">
-              <Image
+              <ShimmerImage
                 src={post.image}
                 alt={post.title}
                 fill
@@ -1580,16 +1880,24 @@ function BottomCTA() {
 
 function ScrollToTopButton() {
   const scrollToTop = () => {
-    // Use a smoother scroll with easing for better mobile experience
-    const scrollToTop = () => {
+    // Instant scroll to top without animation
+    window.scrollTo({
+      top: 0,
+      behavior: 'auto' // 'auto' for instant jump, 'smooth' for animated scroll
+    });
+
+    // Alternative faster animated approach (uncomment if preferred)
+    /*
+    const scrollFast = () => {
       const c = document.documentElement.scrollTop || document.body.scrollTop;
       if (c > 0) {
-        window.requestAnimationFrame(scrollToTop);
-        // Smoother easing for scrolling
-        window.scrollTo(0, c - c / 8);
+        window.requestAnimationFrame(scrollFast);
+        // Much faster scroll: divide by 3 instead of 8 for higher speed
+        window.scrollTo(0, c - c / 2);
       }
     };
-    scrollToTop();
+    scrollFast();
+    */
   };
 
   return (
@@ -1635,7 +1943,7 @@ export async function getStaticProps() {
     const { getAllArticles } = await import('../utils/articleUtils');
     
     // Use pagination to limit initial data size
-    const INITIAL_PAGE_SIZE = 50; // Reduced from 150 to 50
+    const INITIAL_PAGE_SIZE = 150; // Increased from 50 to 150 to ensure we have enough posts for filtering
     
     // Get posts with pagination
     const result = await getAllArticles({
@@ -1651,9 +1959,9 @@ export async function getStaticProps() {
       console.warn('No posts found, returning placeholder data');
       return {
         props: {
-          posts: generatePlaceholderPosts(50), // Reduced from 150 to 50
+          posts: generatePlaceholderPosts(150), // Increased from 50 to 150
           hasMore: false,
-          totalPosts: 50, // Reduced from 150 to 50
+          totalPosts: 150, // Increased from 50 to 150
           currentPage: 1,
           totalPages: 1
         },
@@ -1698,12 +2006,12 @@ export async function getStaticProps() {
   } catch (error) {
     console.error('Error in getStaticProps:', error);
     
-    // Return placeholder data on error with fewer posts
+    // Return placeholder data on error with enough posts
     return {
       props: {
-        posts: generatePlaceholderPosts(50), // Reduced from 150 to 50
+        posts: generatePlaceholderPosts(150), // Increased from 50 to 150
         hasMore: false,
-        totalPosts: 50, // Reduced from 150 to 50
+        totalPosts: 150, // Increased from 50 to 150
         currentPage: 1,
         totalPages: 1
       },

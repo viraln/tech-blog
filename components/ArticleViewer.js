@@ -1178,34 +1178,43 @@ const ArticleViewer = ({ content }) => {
       return <em className="italic" {...props} />;
     },
     ul: (props) => {
-      // Check for emoji list classes
-      const className = props.className || '';
-      if (className.includes('emoji-')) {
-        const emojiClass = className.match(/emoji-(\w+)/)?.[0] || '';
-        return <ul className={`emoji-list ${emojiClass}`} {...props} />;
-      }
-      return <ul className="list-disc list-inside mb-6 space-y-2 pl-4" {...props} />;
+      return <ul className="list-disc pl-6 mb-6 space-y-3 text-gray-700" {...props} />;
     },
-    ol: (props) => <ol className="list-decimal list-inside mb-6 space-y-3 pl-4" {...props} />,
-    li: ({ node, ...props }) => {
-      // Check if the content contains an emoji bullet
-      const content = React.Children.toArray(props.children).join('');
-      // Use a simpler approach to detect emoji characters that's more compatible
-      const emojiMatch = content.match(/^([^\s\w])\s+(.+)$/);
+    ol: (props) => {
+      return <ol className="list-decimal pl-6 mb-6 space-y-3 text-gray-700" {...props} />;
+    },
+    li: (props) => {
+      // Check if this is an emoji bullet
+      let content = props.children;
       
-      if (emojiMatch) {
-        const emoji = emojiMatch[1];
-        const text = emojiMatch[2];
-        
-        return (
-          <li className={`emoji-list-item ${getEmojiClass(emoji)}`}>
-            <span className="emoji-bullet">{emoji}</span>
-            <span>{text}</span>
-          </li>
-        );
+      // If content is a string or array, check for emoji
+      if (typeof content === 'string') {
+        const emojiMatch = content.match(/^([\p{Emoji}])\s+(.*)/u);
+        if (emojiMatch) {
+          const [_, emoji, text] = emojiMatch;
+          return (
+            <li className="emoji-list-item mb-3 pl-2">
+              <span className="emoji-bullet mr-2 text-lg inline-block align-middle">{emoji}</span>
+              <span>{text}</span>
+            </li>
+          );
+        }
+      } else if (Array.isArray(content) && content.length > 0 && typeof content[0] === 'string') {
+        const emojiMatch = content[0].match(/^([\p{Emoji}])\s+(.*)/u);
+        if (emojiMatch) {
+          const [_, emoji, text] = emojiMatch;
+          content[0] = text;
+          return (
+            <li className="emoji-list-item mb-3 pl-2">
+              <span className="emoji-bullet mr-2 text-lg inline-block align-middle">{emoji}</span>
+              <span>{content}</span>
+            </li>
+          );
+        }
       }
       
-      return <li {...props} />;
+      // Regular list item
+      return <li className="mb-2 pl-1" {...props} />;
     },
     a: (props) => {
       // Check for tooltip class
@@ -1235,113 +1244,87 @@ const ArticleViewer = ({ content }) => {
       />
       );
     },
-    blockquote: (props) => {
-      // Check if it's an expert tip/quote
-      const text = props.children?.toString().toLowerCase() || '';
-      if (
-        text.includes('expert') || 
-        text.includes('pro tip') || 
-        text.includes('did you know') ||
-        props.className === 'fancy-quote'
-      ) {
-        let icon = "💡";
-        let title = "Expert Insight";
-        
-        if (text.includes('pro tip')) {
-          icon = "🔍";
-          title = "Pro Tip";
-        } else if (text.includes('did you know')) {
-          icon = "🎓";
-          title = "Did You Know?";
-      }
+    blockquote: ({ node, ...props }) => {
+      const content = props.children[0];
       
-      return (
-          <blockquote {...props} className="!my-8">
-            <div className="font-bold flex items-center mb-2">
-              <span className="mr-2 text-xl">{icon}</span> {title}
+      // Check if this is an EXPERT TIP section
+      if (content && typeof content === 'string' && content.trim().startsWith('EXPERT TIP:')) {
+        // Extract only the tip content
+        const tipContent = content.trim().replace(/^EXPERT TIP:\s*/, '');
+        
+        return (
+          <div className="expert-tip bg-indigo-50 p-6 rounded-lg my-6 border-l-4 border-indigo-600 shadow-sm">
+            <div className="text-lg font-bold text-indigo-800 mb-3 flex items-center">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              <span 
+                className="font-black text-indigo-800 tracking-wide uppercase" 
+                style={{ fontWeight: 900, textShadow: '0 0 1px rgba(79, 70, 229, 0.3)' }}
+              >
+                EXPERT TIP
+              </span>
             </div>
-            {props.children}
-          </blockquote>
+            <div className="text-gray-700 leading-relaxed">{tipContent}</div>
+          </div>
         );
       }
       
+      // Check if this is a social snippet
+      if (node.properties && node.properties.className === 'social-snippet') {
+        return (
+          <div className="social-snippet bg-purple-50 p-4 rounded-lg my-6 border-l-4 border-purple-500">
+            <div className="font-semibold text-purple-800 mb-2">SHARE THIS</div>
+            <div className="text-gray-700 italic">{props.children}</div>
+          </div>
+        );
+      }
+      
+      // Regular blockquote
       return (
-        <blockquote>
+        <blockquote className="pl-4 border-l-4 border-gray-300 my-6 italic text-gray-700">
           {props.children}
         </blockquote>
       );
     },
-    img: (props) => {
-      // Create a simplified image component without all the loading state complexity
-      // This will help avoid hydration issues and ensure images display properly
-      const imgUrl = props.src;
+    img: ({ node, ...props }) => {
+      const imageStyle = {
+        width: "100%",
+        height: "auto",
+        backfaceVisibility: "hidden",
+        transform: "translateZ(0)"
+      };
       
-      // Only use placeholder for missing images
-      if (!imgUrl || imgUrl.includes('placeholder')) {
-        return (
-          <span className="block my-8 bg-gray-100 rounded-lg flex items-center justify-center h-64">
-            <svg className="w-12 h-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-          </span>
-        );
-      }
-      
-      // Extract photographer attribution information from data attributes
-      const photographerName = props['data-photographer'] || props.photographer;
-      const photographerUrl = props['data-photographer-url'] || props.photographerUrl;
-      const sourceWebsite = props['data-source'] || props.source;
-      const sourceUrl = props['data-source-url'] || props.sourceUrl;
+      // Get any alt text that might be a caption
+      const caption = props.alt || '';
       
       return (
-        <span className="block my-8">
-          <span className="overflow-hidden rounded-lg block">
-            <img
-              {...props}
-              className="w-full h-auto object-cover rounded-lg"
-              alt={props.alt || "Article image"}
-              loading="lazy"
-              onLoad={() => handleImageLoad(props.id)}
-            />
-          </span>
-          {(photographerName || sourceWebsite) && (
-            <span className="text-xs text-gray-500 italic mt-2 block text-right">
-              {photographerName && (
-                <>
-                  Photo by: {photographerUrl ? (
-                    <a 
-                      href={photographerUrl} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="text-gray-600 hover:text-indigo-600 transition-colors"
-                    >
-                      {photographerName}
-                    </a>
-                  ) : (
-                    <span>{photographerName}</span>
-                  )}
-                </>
-              )}
-              {photographerName && sourceWebsite && " / "}
-              {sourceWebsite && (
-                <>
-                  Source: {sourceUrl ? (
-                    <a 
-                      href={sourceUrl} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="text-gray-600 hover:text-indigo-600 transition-colors"
-                    >
-                      {sourceWebsite}
-                    </a>
-                  ) : (
-                    <span>{sourceWebsite}</span>
-                  )}
-                </>
-              )}
+        <figure className="my-8">
+          <div className="article-image-wrapper">
+            <span 
+              style={{ 
+                display: 'block',
+                overflow: 'hidden',
+                backfaceVisibility: 'hidden'
+              }}
+            >
+              <img
+                {...props}
+                style={imageStyle}
+                className="article-image"
+                loading="lazy"
+              />
             </span>
+          </div>
+          {caption && (!/^[A-Za-z0-9].*[.!?]$/.test(caption) || /(Photo by|Source:|Credit:|Courtesy of)/i.test(caption)) && (
+            <figcaption 
+              className={/(Photo by|Source:|Credit:|Courtesy of)/i.test(caption) ? "article-image-attribution" : "article-image-caption"} 
+              dangerouslySetInnerHTML={{ 
+                __html: processImageCaption(caption)
+              }}
+            />
           )}
-        </span>
+        </figure>
       );
     },
     code: ({ node, inline, className, children, ...props }) => {
@@ -1427,6 +1410,7 @@ const ArticleViewer = ({ content }) => {
             {props.children}
           </div>
         );
+        
       }
       if (props.className === 'faq-container') {
         return <div {...props} className="space-y-4 my-8" />;
@@ -1479,9 +1463,24 @@ const ArticleViewer = ({ content }) => {
       
       if (attributionMatch) {
         // Only show the attribution part
+        let attributionText = attributionMatch[0];
+        
+        // Check for Unsplash mentions in the attribution text
+        if (attributionText.includes('Unsplash')) {
+          // Check for markdown links to Unsplash
+          attributionText = attributionText.replace(/\[([^\]]+)\]\((https?:\/\/(?:www\.)?unsplash\.com[^)]*)\)/g, (match, text, url) => {
+            // Add UTM parameters to Unsplash links
+            const baseUrl = url.split('?')[0];
+            return `[${text}](${baseUrl}?utm_source=trendiingz&utm_medium=referral)`;
+          });
+          
+          // For plain text mentions of Unsplash without links
+          attributionText = attributionText.replace(/(\son\s+)Unsplash(?!\])/g, '$1<a href="https://unsplash.com?utm_source=trendiingz&utm_medium=referral" target="_blank" rel="noopener noreferrer" class="text-gray-600 hover:text-indigo-600 transition-colors">Unsplash</a>');
+        }
+        
         return (
           <figcaption {...props} className="text-center text-xs text-gray-500 mt-2 italic">
-            {attributionMatch[0]}
+            <span dangerouslySetInnerHTML={{ __html: attributionText }} />
           </figcaption>
         );
       } else if (captionText.includes('Photo by') || captionText.includes('Source')) {
@@ -1494,9 +1493,24 @@ const ArticleViewer = ({ content }) => {
         else if (sourceIndex !== -1) startIndex = sourceIndex;
         
         if (startIndex !== -1) {
+          let attributionText = captionText.substring(startIndex);
+          
+          // Check for Unsplash mentions in the attribution text
+          if (attributionText.includes('Unsplash')) {
+            // Check for markdown links to Unsplash
+            attributionText = attributionText.replace(/\[([^\]]+)\]\((https?:\/\/(?:www\.)?unsplash\.com[^)]*)\)/g, (match, text, url) => {
+              // Add UTM parameters to Unsplash links
+              const baseUrl = url.split('?')[0];
+              return `[${text}](${baseUrl}?utm_source=trendiingz&utm_medium=referral)`;
+            });
+            
+            // For plain text mentions of Unsplash without links
+            attributionText = attributionText.replace(/(\son\s+)Unsplash(?!\])/g, '$1<a href="https://unsplash.com?utm_source=trendiingz&utm_medium=referral" target="_blank" rel="noopener noreferrer" class="text-gray-600 hover:text-indigo-600 transition-colors">Unsplash</a>');
+          }
+          
           return (
             <figcaption {...props} className="text-center text-xs text-gray-500 mt-2 italic">
-              {captionText.substring(startIndex)}
+              <span dangerouslySetInnerHTML={{ __html: attributionText }} />
             </figcaption>
           );
         }
@@ -1515,16 +1529,48 @@ const ArticleViewer = ({ content }) => {
             const nameWords = namePart.split(' ');
             // Get the last few words, which are likely the photographer name
             const probableName = nameWords.slice(Math.max(0, nameWords.length - 3)).join(' ');
+            
+            // Check if the lastPart contains "Unsplash" and potentially is a markdown link
+            const isUnsplash = /Unsplash/i.test(lastPart);
+            const unsplashMarkdownLink = lastPart.match(/\[Unsplash\]\(([^)]+)\)/i);
+            let formattedLastPart = lastPart;
+            
+            if (isUnsplash) {
+              if (unsplashMarkdownLink) {
+                // Get the URL from the markdown link
+                const unsplashUrl = unsplashMarkdownLink[1];
+                const baseUrl = unsplashUrl.split('?')[0];
+                formattedLastPart = lastPart.replace(
+                  /\[Unsplash\]\(([^)]+)\)/i, 
+                  `[Unsplash](${baseUrl}?utm_source=trendiingz&utm_medium=referral)`
+                );
+              } else {
+                // Just the text "Unsplash" without a link
+                formattedLastPart = lastPart.replace(
+                  /Unsplash/i,
+                  `<a href="https://unsplash.com?utm_source=trendiingz&utm_medium=referral" target="_blank" rel="noopener noreferrer" class="text-gray-600 hover:text-indigo-600 transition-colors">Unsplash</a>`
+                );
+              }
+            }
+            
             return (
               <figcaption {...props} className="text-center text-xs text-gray-500 mt-2 italic">
-                Photo by {probableName} on {lastPart}
+                Photo by {probableName} on <span dangerouslySetInnerHTML={{ __html: formattedLastPart }} />
               </figcaption>
             );
           }
           
+          // Just source without photographer
+          const isUnsplash = /Unsplash/i.test(lastPart);
+          let formattedLastPart = lastPart;
+          
+          if (isUnsplash) {
+            formattedLastPart = `<a href="https://unsplash.com?utm_source=trendiingz&utm_medium=referral" target="_blank" rel="noopener noreferrer" class="text-gray-600 hover:text-indigo-600 transition-colors">Unsplash</a>`;
+          }
+          
           return (
             <figcaption {...props} className="text-center text-xs text-gray-500 mt-2 italic">
-              Source: {lastPart}
+              Source: <span dangerouslySetInnerHTML={{ __html: formattedLastPart }} />
             </figcaption>
           );
         }
@@ -1563,9 +1609,78 @@ const ArticleViewer = ({ content }) => {
     return emojiMap[emoji] || '';
   };
 
-  // Try rendering the content, catch errors
+  // Process image captions and add UTM parameters to Unsplash links
+  const processImageCaption = (caption) => {
+    if (!caption) return caption;
+    
+    // Add UTM parameters to links to Unsplash
+    return caption.replace(
+      /(Photo by|Source:|Credit:|Courtesy of) (.*?) on (?:Unsplash|<a href="https:\/\/unsplash\.com.*?"[^>]*>Unsplash<\/a>)/gi,
+      (match, prefix, photographer) => {
+        // If the photographer name already contains a link, extract it
+        let photographerName = photographer;
+        let photographerUrl = '';
+        
+        const linkMatch = photographer.match(/<a href="([^"]+)"[^>]*>([^<]+)<\/a>/);
+        if (linkMatch) {
+          photographerUrl = linkMatch[1];
+          photographerName = linkMatch[2];
+          
+          // Add UTM parameters if it's an Unsplash link
+          if (photographerUrl.includes('unsplash.com')) {
+            const separator = photographerUrl.includes('?') ? '&' : '?';
+            photographerUrl = `${photographerUrl}${separator}utm_source=trendiingz&utm_medium=referral&utm_campaign=image_credit`;
+          }
+          
+          return `${prefix} <a href="${photographerUrl}" target="_blank" rel="noopener noreferrer">${photographerName}</a> on <a href="https://unsplash.com?utm_source=trendiingz&utm_medium=referral&utm_campaign=image_credit" target="_blank" rel="noopener noreferrer">Unsplash</a>`;
+        }
+        
+        // If photographer is not a link, create one to Unsplash with their name in the search
+        return `${prefix} <a href="https://unsplash.com/@${photographerName.toLowerCase().replace(/\s+/g, '')}?utm_source=trendiingz&utm_medium=referral&utm_campaign=image_credit" target="_blank" rel="noopener noreferrer">${photographerName}</a> on <a href="https://unsplash.com?utm_source=trendiingz&utm_medium=referral&utm_campaign=image_credit" target="_blank" rel="noopener noreferrer">Unsplash</a>`;
+      }
+    );
+  };
+
   const renderContent = () => {
     try {
+      // Don't set state during normal rendering - it causes infinite loops
+      // setHasError(false);
+      // setErrorDetails(null);
+      
+      if (!content) {
+        return <div className="text-gray-400 italic">No content available</div>;
+      }
+      
+      // Make a copy of the content to modify
+      let processedContent = content;
+      
+      // 1. Process image credits and Unsplash UTM parameters
+      
+      // Add UTM parameters to all Unsplash links
+      processedContent = processedContent.replace(
+        /(https:\/\/unsplash\.com\S*?)(?=[\s\)])/g,
+        (match) => {
+          const separator = match.includes('?') ? '&' : '?';
+          return `${match}${separator}utm_source=trendiingz&utm_medium=referral&utm_campaign=image_credit`;
+        }
+      );
+      
+      // Process image captions mentioning Unsplash
+      processedContent = processedContent.replace(
+        /\*(Photo by|Source:|Credit:|Courtesy of) (.*?) on Unsplash\*/g,
+        (match, prefix, photographer) => {
+          return `*${processImageCaption(`${prefix} ${photographer} on Unsplash`)}*`;
+        }
+      );
+      
+      // Link plain text mentions of "on Unsplash" with UTM parameters
+      processedContent = processedContent.replace(
+        /(Photo by|Source:|Credit:|Courtesy of) (.*?) on Unsplash/g,
+        (match, prefix, photographer) => {
+          return processImageCaption(`${prefix} ${photographer} on Unsplash`);
+        }
+      );
+      
       // If we previously had an error but the component is re-rendered,
       // give it another chance to render correctly
       if (hasError) {
@@ -1573,8 +1688,46 @@ const ArticleViewer = ({ content }) => {
         setErrorDetails(null);
       }
       
+      // Helper function to add UTM parameters to Unsplash URLs
+      const addUtmToUnsplashUrl = (url) => {
+        if (!url || !url.includes('unsplash.com')) return url;
+        
+        const [baseUrl, existingQuery] = url.split('?');
+        const separator = existingQuery ? '&' : '?';
+        const utmParams = `utm_source=trendiingz&utm_medium=referral`;
+        return `${baseUrl}${separator}${utmParams}`;
+      };
+      
+      // Helper function to process Unsplash links in text
+      const processUnsplashLinks = (text) => {
+        if (!text) return text;
+        
+        // Process markdown links to Unsplash
+        return text.replace(/\[([^\]]+)\]\((https?:\/\/(?:www\.)?unsplash\.com[^)]*)\)/g, (match, linkText, url) => {
+          const processedUrl = addUtmToUnsplashUrl(url);
+          return `[${linkText}](${processedUrl})`;
+        });
+      };
+      
       // Preprocess the content to handle various formatting elements
-      let processedContent = content;
+      processedContent = processedContent.replace(/!\[(.*?)\]\((https?:\/\/(?:www\.)?unsplash\.com[^)]*)\)/g, 
+        (match, alt, url) => {
+          const processedUrl = addUtmToUnsplashUrl(url);
+          return `![${alt}](${processedUrl})`;
+      });
+      
+      // Process all captions that mention Unsplash to add UTM parameters
+      processedContent = processedContent.replace(/\*(Photo by.*?on Unsplash.*?)\*/g, 
+        (match, caption) => {
+          const processedCaption = processUnsplashLinks(caption);
+          return `*${processedCaption}*`;
+      });
+      
+      // Process plain text mentions of "on Unsplash" that aren't already linked
+      processedContent = processedContent.replace(/(\son\s+)Unsplash(?!\])/g, 
+        (match, prefix) => {
+          return `${prefix}[Unsplash](https://unsplash.com?utm_source=trendiingz&utm_medium=referral)`;
+      });
       
       // 1. Process emoji lists
       // Match markdown lists with specific emoji prefixes
@@ -1672,19 +1825,39 @@ const ArticleViewer = ({ content }) => {
       // Reassemble the content
       processedContent = lines.join('\n');
       
-      // 2. Process expert tips and callouts
-      const expertTipRegex = />[\s\n]*\*\*(EXPERT\s+(?:TIP|INSIGHT)|PRO\s+TIP|DID\s+YOU\s+KNOW\?)\:\*\*\s+(.*?)(?:\n\n|\n[^>]|$)/gis;
+      // 2. Process expert tips and callouts with improved detection
+      const expertTipRegex = /(?:^|\n|>\s*)(?:\*\*)?(EXPERT\s+(?:TIP|INSIGHT)|PRO\s+TIP|DID\s+YOU\s+KNOW\?|EXPERT TIP)(?:\*\*)?:?\s*(["']?.*?["']?)(?=\n\n|\n[^>]|$)/gis;
       processedContent = processedContent.replace(expertTipRegex, (match, label, content) => {
-        // Determine callout type based on label
-        let calloutType = 'expert';
-        if (label.includes('PRO TIP')) {
-          calloutType = 'tip';
-        } else if (label.includes('DID YOU KNOW')) {
-          calloutType = 'info';
+        // If content is undefined, it means we matched the simpler pattern
+        // and need to adjust our variables
+        if (!content) {
+          content = label;
+          label = 'EXPERT TIP';
         }
         
-        // Format as a blockquote with the appropriate label
-        return `> **${label}:** ${content.trim()}\n\n`;
+        // Remove quotes and any remaining formatting markers
+        const cleanContent = (content || '').trim()
+          .replace(/^["']|["']$/g, '')  // Remove surrounding quotes
+          .replace(/\*\*/g, '');        // Remove any bold markers
+        
+        // Removed console.log to prevent render issues;
+        
+        // Format as a special blockquote
+        return `\n\n<blockquote class="expert-tip">\nEXPERT TIP: ${cleanContent}\n</blockquote>\n\n`;
+      });
+      
+      // 2.1 Process SOCIAL_SNIPPET sections - handle all possible formats
+      const allSocialSnippetRegex = /(?:^|\n)(?:\*\*)?SOCIAL_SNIPPET(?:\*\*)?:?\s*(["']?.*?["']?)(?=\n\n|\n[^S]|$)/gis;
+      processedContent = processedContent.replace(allSocialSnippetRegex, (match, content) => {
+        // Remove quotes and any remaining formatting markers
+        const cleanContent = content.trim()
+          .replace(/^["']|["']$/g, '')  // Remove surrounding quotes
+          .replace(/\*\*/g, '');        // Remove any bold markers
+          
+        // Removed console.log to prevent render issues;
+        
+        // Format as a special blockquote
+        return `\n\n<blockquote class="social-snippet">\n${cleanContent}\n</blockquote>\n\n`;
       });
       
       // 3. Find patterns of image followed by multiple italic paragraphs and keep only attribution
@@ -1747,9 +1920,34 @@ const ArticleViewer = ({ content }) => {
   };
 
   return (
-    <div className="article-content">
-      {renderContent()}
-    </div>
+    <>
+      <style jsx global>{`
+        /* Remove all hover effects on images */
+        .article-content img, 
+        .article-content .article-image, 
+        .article-content figure img,
+        .article-content .article-image-wrapper img,
+        .article-content .gatsby-resp-image-wrapper img {
+          transition: none !important;
+          transform: none !important;
+          filter: none !important;
+        }
+        
+        .article-content img:hover, 
+        .article-content .article-image:hover, 
+        .article-content figure img:hover,
+        .article-content .article-image-wrapper:hover img,
+        .article-content .gatsby-resp-image-wrapper:hover img {
+          transform: none !important;
+          filter: none !important;
+          brightness: 1 !important;
+          contrast: 1 !important;
+        }
+      `}</style>
+      <div className="article-content prose prose-lg prose-indigo md:prose-xl max-w-none">
+        {renderContent()}
+      </div>
+    </>
   );
 };
 

@@ -467,7 +467,10 @@ export async function getStaticProps({ params }) {
   
   try {
     // Get all posts from MDX utility
-    const allPosts = await getAllPosts()
+    const allPostsResponse = await getAllPosts()
+    
+    // Extract the posts array from the response (since getAllPosts returns {posts, pagination})
+    const allPosts = allPostsResponse.posts || allPostsResponse || []
     
     if (!allPosts || allPosts.length === 0) {
       return {

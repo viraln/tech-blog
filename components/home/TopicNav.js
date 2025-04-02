@@ -141,7 +141,10 @@ export default function TopicNav({ className, onCategorySelect, selectedTopics =
       }
     } else if (!category.isSpecial) {
       // If no onCategorySelect provided, use default navigation behavior
-      router.push(`/topics/${category.id}`)
+      window.location.href = `/topics/${category.id}`
+    } else if (category.id === 'featured' || category.id === 'trending') {
+      // Handle special categories like featured or trending
+      window.location.href = `/topics/${category.id}`
     }
   }
 

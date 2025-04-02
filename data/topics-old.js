@@ -16,7 +16,7 @@ export const topicCategories = {
     { name: 'Biotech', icon: '🧬', count: '14', hot: true },
     { name: 'Crypto', icon: '₿', count: '17', hot: true },
     { name: 'Augmentation', icon: '🦾', count: '13' },
-    { name: 'SyntheticBiology', icon: '🧫', count: '10' },
+    { name: 'Synthetic Biology', icon: '🧫', count: '10' },
     { name: 'ClimateAction', icon: '🌊', count: '12' },
     { name: 'Privacy', icon: '🔒', count: '9', hot: true },
     { name: 'DNA', icon: '🧬', count: '7', hot: true },

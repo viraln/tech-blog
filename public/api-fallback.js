@@ -9,6 +9,12 @@
   // Store original fetch function
   const originalFetch = window.fetch;
   
+  // Store information about API calls
+  const apiCallHistory = {
+    articles: new Set(),
+    lastInfiniteArticlesCall: null
+  };
+  
   // Helper function to generate a mock post
   function generateMockPost(index, page = 0) {
     const categories = ['Tech', 'AI & ML', 'Science', 'Business', 'Innovation', 'Gaming', 'Lifestyle'];
@@ -52,10 +58,25 @@
   const postsApiPattern = /^\/api\/posts(\?|$)/;
   const postsNetlifyPattern = /^\/.netlify\/functions\/posts(\?|$)/;
   const articleApiPattern = /^\/api\/articles\/([^\/]+)$/;
+  const articlePageApiPattern = /^\/api\/articles\/page\/(\d+)(\?|$)/;
+  
+  // Detects if a URL is for the infinite articles section
+  function isInfiniteArticlesRequest(url) {
+    return typeof url === 'string' && articlePageApiPattern.test(url);
+  }
   
   // Overriding fetch to handle API failures
   window.fetch = async function(url, options) {
     try {
+      // Track if this is an infinite articles request
+      const isInfiniteRequest = isInfiniteArticlesRequest(url);
+      if (isInfiniteRequest) {
+        apiCallHistory.lastInfiniteArticlesCall = {
+          url: url,
+          time: Date.now()
+        };
+      }
+      
       // Try the original fetch first
       const response = await originalFetch(url, options);
       
@@ -132,6 +153,30 @@ In conclusion, this mock article demonstrates the fallback mechanism for missing
               }
             });
           }
+          
+          // Handle /api/articles/page/:page endpoint (used by infinite articles)
+          const pageMatch = url.match(articlePageApiPattern);
+          if (pageMatch) {
+            console.log(`[API Fallback] Infinite articles API request failed: ${url}`);
+            
+            // For the infinite articles section, return empty results instead of mock data
+            // This prevents showing mock articles in the infinite scroll section
+            return new Response(JSON.stringify({
+              articles: [],
+              pagination: {
+                page: parseInt(pageMatch[1], 10),
+                limit: 20,
+                total: 4450, // Set to the actual total number of articles we have
+                totalPages: Math.ceil(4450 / 20),
+                hasMore: true // Always return true since we have thousands of articles
+              }
+            }), {
+              status: 200,
+              headers: {
+                'Content-Type': 'application/json'
+              }
+            });
+          }
         }
       }
       
@@ -185,6 +230,29 @@ In conclusion, this mock article demonstrates the fallback mechanism for missing
           };
           
           return new Response(JSON.stringify(mockArticle), {
+            status: 200,
+            headers: {
+              'Content-Type': 'application/json'
+            }
+          });
+        }
+        
+        // Handle infinite articles API fallback for network errors
+        const pageMatch = url.match(articlePageApiPattern);
+        if (pageMatch) {
+          console.log(`[API Fallback] Infinite articles API network request failed: ${url}`);
+          
+          // Return empty results instead of mock data for infinite articles
+          return new Response(JSON.stringify({
+            articles: [],
+            pagination: {
+              page: parseInt(pageMatch[1], 10),
+              limit: 20,
+              total: 4450, // Set to the actual total number of articles we have
+              totalPages: Math.ceil(4450 / 20),
+              hasMore: true // Always return true since we have thousands of articles
+            }
+          }), {
             status: 200,
             headers: {
               'Content-Type': 'application/json'

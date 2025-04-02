@@ -15,6 +15,21 @@ export default async function handler(req, res) {
     const pageNum = parseInt(page, 10) || 1;
     const limit = parseInt(req.query.limit, 10) || 20;
     
+    // Validate page and limit parameters
+    if (pageNum < 1) {
+      return res.status(400).json({ 
+        error: 'Invalid page number', 
+        message: 'Page number must be greater than or equal to 1'
+      });
+    }
+    
+    if (limit < 1 || limit > 50) {
+      return res.status(400).json({ 
+        error: 'Invalid limit', 
+        message: 'Limit must be between 1 and 50'
+      });
+    }
+    
     // Check cache first
     const cacheKey = `page_${pageNum}_limit_${limit}`;
     const cachedData = CACHE.get(cacheKey);
@@ -29,6 +44,31 @@ export default async function handler(req, res) {
       page: pageNum,
       limit
     });
+    
+    // Additional validation to ensure we only return valid articles
+    if (result && result.articles) {
+      result.articles = result.articles.filter(article => {
+        return (
+          article && 
+          typeof article === 'object' &&
+          article.slug && 
+          typeof article.slug === 'string' &&
+          article.title && 
+          typeof article.title === 'string' &&
+          article.date && 
+          !isNaN(new Date(article.date).getTime()) &&
+          article.image &&
+          typeof article.image === 'string'
+        );
+      });
+      
+      // Update pagination info if we filtered out articles
+      if (result.articles.length < result.pagination.total) {
+        result.pagination.total = result.articles.length;
+        result.pagination.totalPages = Math.ceil(result.articles.length / limit);
+        result.pagination.hasMore = pageNum < result.pagination.totalPages;
+      }
+    }
     
     // Store in cache
     CACHE.set(cacheKey, {

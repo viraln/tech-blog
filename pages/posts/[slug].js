@@ -235,55 +235,318 @@ export default function Post({ frontMatter, content, slug, relatedArticles: rawR
     }
   }, [processedRelatedArticles]);
 
-  // Replace loadInitialPosts with a simplified version that doesn't use API
+  // Replace loadInitialPosts with a version that uses cachedFetch with priority
   const loadInitialPosts = () => {
     if (isLoadingInfinite) return;
     
     setIsLoadingInfinite(true);
     
-    // In a server environment, we'd fetch from API
-    // But for static sites, just add a delay then use what we have
+    // Extract categories from the current article
+    const categoryNames = frontMatter.categories && Array.isArray(frontMatter.categories)
+      ? frontMatter.categories.map(cat => typeof cat === 'string' ? cat : (cat.name || '')).filter(Boolean)
+      : [];
+
+    // Use cachedFetch with priority for the initial posts
+    if (typeof window !== 'undefined') {
+      // Attempt to fetch from API with high priority
+      import('../../utils/lazyFetch')
+        .then(({ cachedFetch }) => {
+          // First try to get articles from the same categories
+          if (categoryNames.length > 0) {
+            // Build a query parameter with categories
+            const categoryParam = categoryNames.map(cat => encodeURIComponent(cat)).join(',');
+            cachedFetch(`/api/articles/byCategory?categories=${categoryParam}&limit=8`, {}, true)
+              .then(data => {
+                if (data && data.articles && data.articles.length > 0) {
+                  setInfinitePosts(data.articles);
+                  setHasMorePosts(true);
+                  setIsLoadingInfinite(false);
+                } else {
+                  // Fall back to regular articles if no category matches
+                  fetchRecentArticles();
+                }
+              })
+              .catch(err => {
+                console.log('Error fetching by category, falling back to recent:', err);
+                fetchRecentArticles();
+              });
+          } else {
+            // No categories specified, just get recent articles
+            fetchRecentArticles();
+          }
+          
+          // Helper function for fetching recent articles
+          function fetchRecentArticles() {
+            cachedFetch('/api/articles/recent?limit=8', {}, true)
+              .then(data => {
+                if (data && data.articles && data.articles.length > 0) {
+                  setInfinitePosts(data.articles);
+                  setHasMorePosts(true);
+                } else if (processedRelatedArticles?.length > 0) {
+                  // Fallback to related articles if API fails
+                  setInfinitePosts(processedRelatedArticles);
+                  setHasMorePosts(false);
+                }
+              })
+              .catch(err => {
+                console.log('Falling back to static content:', err);
+                // Fallback to static content
+                if (processedRelatedArticles?.length > 0) {
+                  setInfinitePosts(processedRelatedArticles);
+                }
+                setHasMorePosts(false);
+              })
+              .finally(() => {
+                setIsLoadingInfinite(false);
+              });
+          }
+        })
+        .catch(err => {
+          console.error("Error importing lazyFetch:", err);
+          // If module import fails, fall back to static content
     setTimeout(() => {
       if (processedRelatedArticles?.length > 0) {
-        // For static sites, we just shuffle the related articles to simulate new content
-        const shuffled = [...processedRelatedArticles].sort(() => 0.5 - Math.random());
-        setInfinitePosts(prev => [...prev, ...shuffled]);
+              setInfinitePosts(processedRelatedArticles);
       }
       setIsLoadingInfinite(false);
-      setHasMorePosts(false); // Static sites can't do true infinite loading
-    }, 500);
+            setHasMorePosts(false);
+          }, 300);
+        });
+    } else {
+      // Server-side rendering case - use static content
+      setTimeout(() => {
+        if (processedRelatedArticles?.length > 0) {
+          setInfinitePosts(processedRelatedArticles);
+        }
+        setIsLoadingInfinite(false);
+        setHasMorePosts(false);
+      }, 300);
+    }
   };
 
-  // Replace loadMoreInfinite with a simplified version
+  // Update loadMoreInfinite to use cachedFetch
   const loadMoreInfinite = () => {
-    if (isLoadingInfinite) return;
+    // Check if we're already loading or if there are no more posts and it's not a manual load
+    if (isLoadingInfinite && !window.forceLoadingMore) return;
+    
+    // Check for stopping condition: don't auto-load after 250 articles
+    // But allow manual loading via button clicks (forceLoadingMore flag)
+    if (infinitePosts.length > 250 && !window.forceLoadingMore) {
+      console.log('Already loaded 250+ articles in [slug], stopping auto-load. User can manually load more if needed.');
+      return;
+    }
     
     setIsLoadingInfinite(true);
+    // Increment page - if it's a forced load (from button), skip ahead more
+    const nextPage = window.forceLoadingMore ? infinitePage + 3 : infinitePage + 1;
+    console.log(`Loading more articles in [slug], page ${nextPage}, current count: ${infinitePosts.length}`);
     
-    // In a static site, we can't fetch more, but we can simulate it
-    setTimeout(() => {
-      // Simulate loading more by duplicating and shuffling existing content
-      if (processedRelatedArticles?.length > 0) {
-        const shuffled = [...processedRelatedArticles]
-          .sort(() => 0.5 - Math.random())
-          .map((article, i) => ({ 
-            ...article, 
-            slug: `${article.slug}-more-${infinitePage}-${i}`,
-            title: `${article.title} (More)` 
-          }));
-        
-        setInfinitePosts(prev => [...prev, ...shuffled.slice(0, 3)]);
-        setInfinitePage(prev => prev + 1);
-      }
-      
+    // Extract categories from the current article
+    const categoryNames = frontMatter.categories && Array.isArray(frontMatter.categories)
+      ? frontMatter.categories.map(cat => typeof cat === 'string' ? cat : (cat.name || '')).filter(Boolean)
+      : [];
+    
+    if (typeof window !== 'undefined') {
+      // Use dynamic import to avoid server-side issues
+      import('../../utils/lazyFetch')
+        .then(({ cachedFetch }) => {
+          // Add a timestamp to ensure we don't get cached results
+          const timestamp = Date.now();
+          
+          // Determine whether to continue fetching by category or regular pagination
+          const fetchByCategory = categoryNames.length > 0 && infinitePosts.length > 0;
+          
+          // If we already have some articles and categories are available, fetch by category
+          if (fetchByCategory) {
+            const categoryParam = categoryNames.map(cat => encodeURIComponent(cat)).join(',');
+            cachedFetch(`/api/articles/byCategory?categories=${categoryParam}&page=${nextPage}&limit=8&nocache=${timestamp}`, {}, false)
+              .then(data => {
+                if (data && data.articles && data.articles.length > 0) {
+                  // Filter out invalid articles and duplicates
+                  const existingSlugs = new Set(infinitePosts.map(post => post.slug));
+                  const newArticles = data.articles.filter(article => 
+                    article && 
+                    article.slug && 
+                    !article.slug.startsWith('placeholder-') && 
+                    !article.slug.startsWith('mock-post-') &&
+                    !existingSlugs.has(article.slug)
+                  );
+                  
+                  console.log(`Found ${newArticles.length} new valid articles out of ${data.articles.length}`);
+                  
+                  if (newArticles.length > 0) {
+                    // Sort by date before adding
+                    const sortedArticles = [...newArticles].sort((a, b) => 
+                      new Date(b.date) - new Date(a.date)
+                    );
+                    
+                    setInfinitePosts(prev => {
+                      const combined = [...prev, ...sortedArticles];
+                      return combined.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+                    });
+                  }
+                  
+                  // Always keep hasMore true until we have a substantial number of articles
+                  if (infinitePosts.length < 250 || window.forceLoadingMore) {
+                    setHasMorePosts(true);
+                  } else {
+                    setHasMorePosts(data.articles.length >= 8);
+                  }
+                  
+                  setInfinitePage(nextPage);
+                } else {
+                  // If no more articles by category, switch to regular pagination
+                  fetchRegularArticles();
+                }
+              })
+              .catch(err => {
+                console.log('Error loading more articles by category, falling back:', err);
+                fetchRegularArticles();
+              })
+              .finally(() => {
+                setIsLoadingInfinite(false);
+                // Clear the force loading flag after a delay
+                if (window.forceLoadingMore) {
+                  setTimeout(() => {
+                    window.forceLoadingMore = false;
+                  }, 1000);
+                }
+              });
+          } else {
+            fetchRegularArticles();
+          }
+          
+          // Helper function for fetching regular paginated articles
+          function fetchRegularArticles() {
+            // Use cachedFetch without priority for additional pages
+            cachedFetch(`/api/articles/page/${nextPage}?limit=8&nocache=${timestamp}`, {}, false)
+              .then(data => {
+                if (data && data.articles && data.articles.length > 0) {
+                  // Filter out invalid articles and duplicates
+                  const existingSlugs = new Set(infinitePosts.map(post => post.slug));
+                  const newArticles = data.articles.filter(article => 
+                    article && 
+                    article.slug && 
+                    !article.slug.startsWith('placeholder-') && 
+                    !article.slug.startsWith('mock-post-') &&
+                    !existingSlugs.has(article.slug)
+                  );
+                  
+                  console.log(`Found ${newArticles.length} new valid articles out of ${data.articles.length}`);
+                  
+                  if (newArticles.length > 0) {
+                    // Sort by date before adding
+                    const sortedArticles = [...newArticles].sort((a, b) => 
+                      new Date(b.date) - new Date(a.date)
+                    );
+                    
+                    setInfinitePosts(prev => {
+                      const combined = [...prev, ...sortedArticles];
+                      return combined.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+                    });
+                  }
+                  
+                  // Always keep hasMore true until we have a substantial number of articles
+                  if (infinitePosts.length < 250 || window.forceLoadingMore) {
+                    setHasMorePosts(true);
+                  } else {
+                    setHasMorePosts(data.articles.length >= 8);
+                  }
+                  
+                  setInfinitePage(nextPage);
+                } else {
+                  // Don't set hasMore to false if we're still under our target article count
+                  if (infinitePosts.length < 250 || window.forceLoadingMore) {
+                    setHasMorePosts(true);
+                    // Try skipping ahead a page
+                    setInfinitePage(nextPage + 1);
+                  } else {
+                    setHasMorePosts(false);
+                  }
+                }
+              })
+              .catch(err => {
+                console.log('Error loading more posts:', err);
+                // Don't set hasMore to false if we're still under our target article count
+                if (infinitePosts.length < 250 || window.forceLoadingMore) {
+                  setHasMorePosts(true);
+                } else {
+                  setHasMorePosts(false);
+                }
+              })
+              .finally(() => {
+                setIsLoadingInfinite(false);
+                // Clear the force loading flag after a delay
+                if (window.forceLoadingMore) {
+                  setTimeout(() => {
+                    window.forceLoadingMore = false;
+                  }, 1000);
+                }
+              });
+          }
+        })
+        .catch(err => {
+          console.error("Error importing lazyFetch:", err);
+          // Fallback if module import fails
+          setIsLoadingInfinite(false);
+          // Don't set hasMore to false if we're still under our target article count
+          if (infinitePosts.length < 250 || window.forceLoadingMore) {
+            setHasMorePosts(true);
+          } else {
+            setHasMorePosts(false);
+          }
+        });
+    } else {
+      // Server-side case - should not happen, but included for completeness
       setIsLoadingInfinite(false);
-      
-      // Only allow a few pages of infinite scrolling in static mode
-      if (infinitePage >= 3) {
+      if (infinitePosts.length < 250 || window.forceLoadingMore) {
+        setHasMorePosts(true);
+      } else {
         setHasMorePosts(false);
       }
-    }, 800);
+    }
   };
+
+  // Add a dedicated function to force loading more articles
+  const forceLoadMoreArticles = () => {
+    console.log('[slug] Force loading more articles triggered');
+    
+    // Set global flag to indicate this was a manual action
+    window.forceLoadingMore = true;
+    
+    // Reset loading state
+    setIsLoadingInfinite(false);
+    
+    // Clear any cached loading flags
+    if (typeof window !== 'undefined') {
+      // Reset the page if we're at a high number to start fresh
+      if (infinitePage > 5) {
+        setInfinitePage(1);
+      } else {
+        // Skip ahead to find new content
+        setInfinitePage(infinitePage + 5);
+      }
+      
+      // Force the hasMore state to true
+      setHasMorePosts(true);
+      
+      // Trigger the load after a short delay
+      setTimeout(() => {
+        loadMoreInfinite();
+      }, 100);
+    }
+  };
+
+  // Make the function available globally for debugging
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.forceLoadMoreArticles_Slug = forceLoadMoreArticles;
+      
+      return () => {
+        window.forceLoadMoreArticles_Slug = null;
+      };
+    }
+  }, []);
 
   // Handle browser history and back button
   useEffect(() => {
@@ -618,16 +881,11 @@ export default function Post({ frontMatter, content, slug, relatedArticles: rawR
 
   // Handle scroll to top
   const scrollToTop = () => {
-    // Smoother scroll with easing for better mobile experience
-    const scrollToTop = () => {
-      const c = document.documentElement.scrollTop || document.body.scrollTop;
-      if (c > 0) {
-        window.requestAnimationFrame(scrollToTop);
-        // Using a smoother easing function for scrolling
-        window.scrollTo(0, c - c / 8);
-      }
-    };
-    scrollToTop();
+    // Use smoother scrolling with better performance
+    window.scrollTo({
+      top: 0,
+      behavior: 'smooth'
+    });
   };
 
   // Toggle mobile menu
@@ -934,7 +1192,21 @@ export default function Post({ frontMatter, content, slug, relatedArticles: rawR
         {frontMatter.imageCredit && (
           <div className="text-center py-2.5 border-b border-gray-100 text-gray-500 text-xs md:text-sm font-medium">
             <div className="max-w-3xl mx-auto px-4">
-              <div dangerouslySetInnerHTML={{ __html: frontMatter.imageCredit.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-indigo-500 hover:text-indigo-700 transition-colors">$1</a>') }} />
+              <div dangerouslySetInnerHTML={{ __html: frontMatter.imageCredit
+                .replace(/\*/g, '')
+                .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, text, url) => {
+                  // Add UTM parameters to Unsplash links
+                  if (url.includes('unsplash.com')) {
+                    // Separate the URL from any query parameters that might already exist
+                    const [baseUrl, existingQuery] = url.split('?');
+                    const separator = existingQuery ? '&' : '?';
+                    const utmParams = `utm_source=trendiingz&utm_medium=referral`;
+                    return `<a href="${baseUrl}${separator}${utmParams}" target="_blank" rel="noopener noreferrer" class="text-indigo-500 hover:text-indigo-700 transition-colors">${text}</a>`;
+                  }
+                  // Return normal links unchanged
+                  return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-indigo-500 hover:text-indigo-700 transition-colors">${text}</a>`;
+                })
+              }} />
             </div>
           </div>
         )}
@@ -1450,13 +1722,38 @@ export default function Post({ frontMatter, content, slug, relatedArticles: rawR
           </footer>
         </div>
 
-        {/* Related Articles - Using traditional anchor tags */}
+        {/* Related Articles - Shows articles that share categories */}
         <div className="bg-gray-50 py-10 sm:py-16">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-            <h2 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-6 sm:mb-8">You might also like</h2>
+            <h2 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-6 sm:mb-8">
+              You might also like
+              <span className="ml-2 text-sm font-medium text-gray-500">
+                Articles related to {frontMatter.category}
+              </span>
+            </h2>
             {processedRelatedArticles && processedRelatedArticles.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-                {processedRelatedArticles.map((article, index) => (
+                {processedRelatedArticles.map((article, index) => {
+                  // Extract category names from the article's categories
+                  const articleCategoryNames = article.categories && Array.isArray(article.categories)
+                    ? article.categories.map(cat => typeof cat === 'string' ? cat : (cat.name || '')).filter(Boolean)
+                    : [];
+                  
+                  // Extract current article's category names
+                  const currentCategoryNames = frontMatter.categories && Array.isArray(frontMatter.categories)
+                    ? frontMatter.categories.map(cat => typeof cat === 'string' ? cat : (cat.name || '')).filter(Boolean)
+                    : [];
+                  
+                  // Find matching categories
+                  const matchingCategories = articleCategoryNames.filter(catName => 
+                    currentCategoryNames.some(currentCat => 
+                      currentCat.toLowerCase() === catName.toLowerCase() || 
+                      currentCat.toLowerCase().includes(catName.toLowerCase()) ||
+                      catName.toLowerCase().includes(currentCat.toLowerCase())
+                    )
+                  );
+                  
+                  return (
                   <a
                     href={`/posts/${article.slug}`}
                     key={`related-${article.slug}-${index}`}
@@ -1472,13 +1769,45 @@ export default function Post({ frontMatter, content, slug, relatedArticles: rawR
                         unoptimized={article.image.includes('unsplash.com') || article.image.includes('http')}
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                        {matchingCategories.length > 0 && (
+                          <div className="absolute top-3 right-3 bg-purple-600 text-white text-xs px-2 py-1 rounded-md">
+                            Matching Topic
+                          </div>
+                        )}
                     </div>
                     <div className="p-4 sm:p-5 flex-grow flex flex-col justify-between">
                       <div>
-                        <div className="flex items-center mb-2">
-                          <span className="text-xs px-2 sm:px-2.5 py-0.5 bg-indigo-100 text-indigo-800 rounded-full font-medium">
+                          <div className="flex flex-wrap gap-1.5 mb-2">
+                            {article.category && (
+                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                                matchingCategories.includes(article.category) 
+                                  ? 'bg-indigo-200 text-indigo-800' 
+                                  : 'bg-indigo-100 text-indigo-800'
+                              }`}>
                             {article.category}
                           </span>
+                            )}
+                            {articleCategoryNames.length > 0 && articleCategoryNames.slice(0, 2).map((catName, i) => {
+                              if (catName === article.category) return null;
+                              const isMatching = matchingCategories.includes(catName);
+                              return (
+                                <span 
+                                  key={`cat-${i}`}
+                                  className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                                    isMatching 
+                                      ? 'bg-purple-200 text-purple-800' 
+                                      : 'bg-gray-100 text-gray-800'
+                                  }`}
+                                >
+                                  {catName}
+                                </span>
+                              );
+                            })}
+                            {articleCategoryNames.length > 2 && (
+                              <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-800 rounded-full font-medium">
+                                +{articleCategoryNames.length - 2} more
+                              </span>
+                            )}
                         </div>
                         <h3 className="text-base sm:text-lg font-semibold text-gray-800 group-hover:text-indigo-600 transition-colors line-clamp-2 mb-2">
                           {article.title}
@@ -1494,7 +1823,8 @@ export default function Post({ frontMatter, content, slug, relatedArticles: rawR
                       </div>
                     </div>
                   </a>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <div className="p-6 bg-white rounded-xl shadow-sm text-center">
@@ -1505,14 +1835,18 @@ export default function Post({ frontMatter, content, slug, relatedArticles: rawR
         </div>
 
         {/* Infinite Articles Section - Always display, even with empty initial data */}
-        <div className="bg-gray-50 py-8 mt-8">
+        <div className="bg-white py-8 mt-8">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-            <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-800 mb-4 sm:mb-6">Explore More</h2>
+            {/* <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-800 mb-6 sm:mb-8">Explore More</h2> */}
+            {/* Pass loadInitialPosts as a ref to InfiniteArticles to ensure it loads automatically */}
             <InfiniteArticles 
-              posts={infinitePosts.length > 0 ? infinitePosts : processedRelatedArticles}
+              posts={infinitePosts.length > 0 ? infinitePosts : []}
               hasMore={hasMorePosts}
               isLoadingMore={isLoadingInfinite}
               onLoadMore={loadMoreInfinite}
+              loadInitialPosts={loadInitialPosts}
+              initialLoadOnMount={true}
+              forceLoad={forceLoadMoreArticles} // Add force load function for manual loading
             />
           </div>
         </div>
@@ -1622,7 +1956,12 @@ export async function getStaticProps({ params: { slug } }) {
     };
 
     // Get related articles in parallel with other operations
-    const relatedArticlesPromise = getRelatedArticles(frontMatter.keywords, slug, 6);
+    const relatedArticlesPromise = getRelatedArticles(
+      frontMatter.keywords, 
+      slug, 
+      6, 
+      frontMatter.categories || []
+    );
     
     // Import only if needed
     let serializedContent = null;

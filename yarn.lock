@@ -5767,6 +5767,11 @@ remark-stringify@^11.0.0:
     mdast-util-to-markdown "^2.0.0"
     unified "^11.0.0"
 
+remark-unwrap-images@^5.0.0:
+  version "5.0.0"
+  resolved "https://registry.npmjs.org/remark-unwrap-images/-/remark-unwrap-images-5.0.0.tgz"
+  integrity sha512-s7WSIA6s98ywa93v/5x+wFeGgJSl1VJnNYgg//0MUgu12CyxVMi+vcCifXFEUtQfnnWSTXWOH6f8LkDBNLthrg==
+
 remark@^15.0.1:
   version "15.0.1"
   resolved "https://registry.npmjs.org/remark/-/remark-15.0.1.tgz"

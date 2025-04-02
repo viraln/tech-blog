@@ -1,5 +1,7 @@
 import '../styles/globals.css'
 import '../styles/animations.css'
+import '../styles/article-fixes.css'
+import '../styles/images.css'
 import { useEffect } from 'react'
 import DataPrefetcher from '../components/DataPrefetcher'
 // Remove the direct import to avoid including server-side code

@@ -42,16 +42,22 @@ export function getRelativeTime(date) {
 }
 
 /**
- * Get related articles based on categories, tags, or content similarity
- * @param {string[]} keywords - Keywords to match
- * @param {string} currentSlug - Slug of the current article (to exclude from results)
- * @param {number} limit - Maximum number of articles to return
+ * Get related articles based on keywords or categories
+ * @param {Array} keywords - Array of keywords to match
+ * @param {string} currentSlug - Slug of the current article
+ * @param {number} limit - Maximum number of related articles to return
+ * @param {Array} categories - Categories of the current article
  * @returns {Promise<Array>} - Array of related articles
  */
-export async function getRelatedArticles(keywords = [], currentSlug, limit = 3) {
+export async function getRelatedArticles(keywords = [], currentSlug, limit = 3, categories = []) {
   try {
+    // Extract category names if categories are objects
+    const categoryNames = Array.isArray(categories) 
+      ? categories.map(cat => typeof cat === 'string' ? cat : (cat.name || '')).filter(Boolean)
+      : [];
+    
     // Check if we already have these recommendations cached
-    const cacheKey = `related_${currentSlug}_${limit}`;
+    const cacheKey = `related_${currentSlug}_${limit}_${categoryNames.join('_')}`;
     if (RECOMMENDATION_CACHE.has(cacheKey)) {
       const { data, timestamp } = RECOMMENDATION_CACHE.get(cacheKey);
       // Use cache if not expired
@@ -84,6 +90,36 @@ export async function getRelatedArticles(keywords = [], currentSlug, limit = 3) 
       
       // Calculate a relevance score based on keyword match
       let relevanceScore = 0;
+      let hasMatchingCategory = false;
+      
+      // Check for category matches (highest priority)
+      if (categoryNames.length > 0 && frontMatter.categories && Array.isArray(frontMatter.categories)) {
+        const articleCategoryNames = frontMatter.categories.map(cat => 
+          typeof cat === 'string' ? cat : (cat.name || '')
+        ).filter(Boolean);
+        
+        // Count the number of matching categories and boost score
+        for (const categoryName of categoryNames) {
+          if (articleCategoryNames.some(name => 
+            name.toLowerCase() === categoryName.toLowerCase() || 
+            name.toLowerCase().includes(categoryName.toLowerCase()) ||
+            categoryName.toLowerCase().includes(name.toLowerCase())
+          )) {
+            relevanceScore += 10; // Higher weight for category matches
+            hasMatchingCategory = true;
+          }
+        }
+        
+        // Also check the main category field
+        if (frontMatter.category && categoryNames.some(name => 
+          frontMatter.category.toLowerCase() === name.toLowerCase() || 
+          frontMatter.category.toLowerCase().includes(name.toLowerCase()) ||
+          name.toLowerCase().includes(frontMatter.category.toLowerCase())
+        )) {
+          relevanceScore += 8;
+          hasMatchingCategory = true;
+        }
+      }
       
       // Check keyword matches
       if (keywords && keywords.length > 0) {
@@ -111,7 +147,7 @@ export async function getRelatedArticles(keywords = [], currentSlug, limit = 3) 
         }
       }
       
-      // Check category match
+      // General category relevance
       if (frontMatter.categories && Array.isArray(frontMatter.categories)) {
         relevanceScore += frontMatter.categories.length; // More categories means more potential overlap
       }
@@ -120,6 +156,7 @@ export async function getRelatedArticles(keywords = [], currentSlug, limit = 3) 
       if (frontMatter.trending) relevanceScore += 3;
       if (frontMatter.featured) relevanceScore += 2;
       
+      // Store category match status to sort by category first
       articlesData.push({
         slug: frontMatter.slug || filename.replace(/\.md$/, ''),
         title: frontMatter.title || 'Untitled',
@@ -127,8 +164,10 @@ export async function getRelatedArticles(keywords = [], currentSlug, limit = 3) 
         date: frontMatter.date || new Date().toISOString(),
         image: frontMatter.image || '/placeholder.jpg',
         category: frontMatter.category || 'Uncategorized',
+        categories: frontMatter.categories || [],
         readingTime: frontMatter.readingTime || 3,
-        relevanceScore
+        relevanceScore,
+        hasMatchingCategory
       });
     }
     
@@ -156,9 +195,40 @@ export async function getRelatedArticles(keywords = [], currentSlug, limit = 3) 
           // Skip current post
           if (data.slug === currentSlug) continue;
           
-          // Calculate relevance score (same logic as above)
+          // Calculate relevance score
           let relevanceScore = 0;
+          let hasMatchingCategory = false;
           
+          // Check for category matches (highest priority)
+          if (categoryNames.length > 0 && data.categories && Array.isArray(data.categories)) {
+            const articleCategoryNames = data.categories.map(cat => 
+              typeof cat === 'string' ? cat : (cat.name || '')
+            ).filter(Boolean);
+            
+            // Count the number of matching categories and boost score
+            for (const categoryName of categoryNames) {
+              if (articleCategoryNames.some(name => 
+                name.toLowerCase() === categoryName.toLowerCase() || 
+                name.toLowerCase().includes(categoryName.toLowerCase()) ||
+                categoryName.toLowerCase().includes(name.toLowerCase())
+              )) {
+                relevanceScore += 10; // Higher weight for category matches
+                hasMatchingCategory = true;
+              }
+            }
+            
+            // Also check the main category field
+            if (data.category && categoryNames.some(name => 
+              data.category.toLowerCase() === name.toLowerCase() || 
+              data.category.toLowerCase().includes(name.toLowerCase()) ||
+              name.toLowerCase().includes(data.category.toLowerCase())
+            )) {
+              relevanceScore += 8;
+              hasMatchingCategory = true;
+            }
+          }
+          
+          // Continue with existing keyword matching logic
           if (keywords && keywords.length > 0) {
             const postKeywords = data.keywords || [];
             for (const keyword of keywords) {
@@ -192,8 +262,10 @@ export async function getRelatedArticles(keywords = [], currentSlug, limit = 3) 
             date: data.date || new Date().toISOString(),
             image: data.image || '/placeholder.jpg',
             category: data.category || 'Uncategorized',
+            categories: data.categories || [],
             readingTime: data.readingTime || 3,
-            relevanceScore
+            relevanceScore,
+            hasMatchingCategory
           });
         } catch (error) {
           console.error(`Error processing file ${filename} for related articles:`, error);
@@ -201,8 +273,13 @@ export async function getRelatedArticles(keywords = [], currentSlug, limit = 3) 
       }
     }
     
-    // Sort by relevance score (higher is better)
-    articlesData.sort((a, b) => b.relevanceScore - a.relevanceScore);
+    // First sort by whether they have matching categories (true first)
+    // Then sort by relevance score within each group
+    articlesData.sort((a, b) => {
+      if (a.hasMatchingCategory && !b.hasMatchingCategory) return -1;
+      if (!a.hasMatchingCategory && b.hasMatchingCategory) return 1;
+      return b.relevanceScore - a.relevanceScore;
+    });
     
     // Get limited results
     const results = articlesData.slice(0, limit);
@@ -386,7 +463,7 @@ function diversifyRecommendations(scoredArticles, limitCount) {
  */
 export async function getAllArticles(options = {}) {
   try {
-    const { page = 1, limit = 20, skipCache = false } = options;
+    const { page = 1, limit = 20, skipCache = false, categories = [] } = options;
     
     // If using cache and we haven't loaded this page yet, load it now
     if (!skipCache && cachedArticlesList) {
@@ -448,6 +525,32 @@ export async function getAllArticles(options = {}) {
         if (options.featured && !frontMatter.featured) continue;
         if (options.trending && !frontMatter.trending) continue;
         
+        // Filter by categories if provided
+        if (categories && categories.length > 0) {
+          // Normalize the article categories array
+          const articleCategories = (frontMatter.categories || []).map(cat => 
+            typeof cat === 'string' ? cat.toLowerCase() : (cat.name ? cat.name.toLowerCase() : '')
+          ).filter(Boolean);
+          
+          // Also include the primary category if it exists
+          if (frontMatter.category) {
+            articleCategories.push(frontMatter.category.toLowerCase());
+          }
+          
+          // Check if any of the requested categories match any of the article's categories
+          const categoryMatches = categories.some(requestedCategory => {
+            const requestedCategoryLower = requestedCategory.toLowerCase();
+            return articleCategories.some(articleCategory => 
+              articleCategory === requestedCategoryLower || 
+              articleCategory.includes(requestedCategoryLower) || 
+              requestedCategoryLower.includes(articleCategory)
+            );
+          });
+          
+          // Skip this article if none of the categories match
+          if (!categoryMatches) continue;
+        }
+        
         // Extract timestamp from filename if present and use it as date if no date in frontMatter
         let date = frontMatter.date;
         if (!date) {
@@ -481,14 +584,18 @@ export async function getAllArticles(options = {}) {
     
     // Add pagination metadata if requested
     if (options.paginate) {
+      // Calculate more accurate pagination information
+      const totalArticles = files.length;
+      const totalArticlesDisplayed = startIndex + articlesData.length;
+      
       return {
         articles: articlesData,
         pagination: {
           page,
           limit,
-          total: files.length,
-          totalPages: Math.ceil(files.length / limit),
-          hasMore: endIndex < files.length
+          total: totalArticles,
+          totalPages: Math.ceil(totalArticles / limit),
+          hasMore: totalArticlesDisplayed < totalArticles // Compare total displayed to total available
         }
       };
     }
