@@ -1,6 +1,6 @@
 [build]
   command = "npm run build"
-  publish = "out"
+  publish = ".next"
   functions = "netlify/functions"
 
 [[plugins]]
@@ -8,7 +8,6 @@
 
 [build.environment]
   NEXT_TELEMETRY_DISABLED = "1"
-  NETLIFY_NEXT_PLUGIN_SKIP = "true"
   NODE_ENV = "production"
   NEXT_PUBLIC_SITE_URL = "https://trendiingz.com"
 
@@ -21,13 +20,14 @@
 [dev]
   # Settings for netlify dev
   functions = "netlify/functions"
-  publish = "out"
+  publish = ".next"
 
-# Redirect API calls to Netlify Functions
+# Redirect API calls to Netlify Functions (for custom Netlify functions)
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/:splat"
   status = 200
+  force = false
 
 # Handle client-side routing
 [[redirects]]

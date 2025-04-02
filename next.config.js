@@ -3,6 +3,9 @@ const nextConfig = {
   // Basic configuration
   reactStrictMode: true,
   
+  // Do not export as static site to support API routes
+  output: 'standalone',
+  
   // Image domains - using remotePatterns instead of deprecated domains
   images: {
     remotePatterns: [
