@@ -21,6 +21,12 @@ export default async function handler(req, res) {
         )
       : allPosts;
     
+    // Ensure filteredPosts is an array before calling slice
+    if (!filteredPosts || !Array.isArray(filteredPosts)) {
+      console.error('filteredPosts is not an array:', filteredPosts);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+    
     // Calculate pagination
     const startIndex = (pageNum - 1) * limitNum;
     const endIndex = pageNum * limitNum;
