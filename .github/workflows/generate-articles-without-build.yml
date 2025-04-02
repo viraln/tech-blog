@@ -1,0 +1,77 @@
+name: Hourly Article Generation Without Build
+
+on:
+  schedule:
+    # Run every hour at 30 minutes
+    - cron: '30 * * * *'
+  # Allow manual triggering from GitHub Actions tab with optional inputs
+  workflow_dispatch:
+    inputs:
+      article_count:
+        description: 'Number of articles to generate'
+        required: true
+        default: '25'
+        type: number
+
+# Add permissions section to allow GitHub Actions to push changes
+permissions:
+  contents: write
+  
+jobs:
+  generate-articles:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          # Ensure we get full history to allow pushing changes back
+          fetch-depth: 0
+          
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+          
+      - name: Install dependencies
+        run: npm install
+        
+      - name: Generate new articles
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            node scripts/generate-topic-articles.js --random --count=${{ github.event.inputs.article_count }} --force
+          else
+            node scripts/generate-topic-articles.js --random --count=50 --force --concurrency=2
+          fi
+        env:
+          # Make sure all your environment variables from .env are defined here
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY_1: ${{ secrets.GEMINI_API_KEY_1 }}
+          GEMINI_API_KEY_2: ${{ secrets.GEMINI_API_KEY_2 }}
+          UNSPLASH_ACCESS_KEY: ${{ secrets.UNSPLASH_ACCESS_KEY }}
+          UNSPLASH_ACCESS_KEY_1: ${{ secrets.UNSPLASH_ACCESS_KEY_1 }}
+          UNSPLASH_ACCESS_KEY_2: ${{ secrets.UNSPLASH_ACCESS_KEY_2 }}
+          UNSPLASH_ACCESS_KEY_3: ${{ secrets.UNSPLASH_ACCESS_KEY_3 }}
+          UNSPLASH_ACCESS_KEY_4: ${{ secrets.UNSPLASH_ACCESS_KEY_4 }}
+          UNSPLASH_ACCESS_KEY_5: ${{ secrets.UNSPLASH_ACCESS_KEY_5 }}
+          
+      - name: Configure Git
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          
+      - name: Commit and push if changes
+        run: |
+          # Debug: Show where articles might be
+          find . -name "*.md" | grep article
+          
+          # Add both possible article locations to be safe
+          git add content/articles/ || echo "No content/articles/ directory"
+          git add netlify/functions/content/articles/ || echo "No netlify/functions/content/articles/ directory"
+          
+          # Commit and push if there are changes
+          git commit -m "new-articles-no-build $(date +%Y-%m-%d-%H%M)" || echo "No changes to commit"
+          git push
+          
+      # No Netlify build trigger in this workflow 
