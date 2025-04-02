@@ -4,6 +4,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { getRelativeTime } from '../../utils/dateUtils'
 import { fetchArticle, fetchArticles, cachedFetch } from '../../utils/lazyFetch'
+import { apiFetch } from '../../utils/api-fallback'
 
 // Track which articles have already been prefetched to avoid duplication
 const prefetchedArticles = new Set();
@@ -333,28 +334,14 @@ export default function InfiniteArticles({
       const timestamp = Date.now();
       
       try {
-        // Use direct fetch instead of cachedFetch to avoid any caching issues
-        // Add a random timestamp to ensure cache-busting
-        const response = await fetch(`/api/articles/page/${nextPage}?limit=30&nocache=${timestamp}`);
+        // Use our apiFetch instead of direct fetch - it handles fallbacks to Netlify functions
+        const url = `/api/articles/page/${nextPage}?limit=30&nocache=${timestamp}`;
+        data = await apiFetch(url);
         
-        // Check if response is actually JSON
-        const contentType = response.headers.get('content-type');
-        if (!contentType || !contentType.includes('application/json')) {
-          console.error(`API returned non-JSON response: ${contentType}`);
-          throw new Error('API returned invalid content type');
-        }
-        
-        // Only parse as JSON if we have a valid response
-        if (response.ok) {
-          data = await response.json();
-          // Validate the response format
-          if (!data || typeof data !== 'object') {
-            console.error('API returned invalid data format:', data);
-            throw new Error('Invalid API response format');
-          }
-        } else {
-          console.error(`API returned error status: ${response.status}`);
-          throw new Error(`API error: ${response.status}`);
+        // Validate the response format
+        if (!data || typeof data !== 'object') {
+          console.error('API returned invalid data format:', data);
+          throw new Error('Invalid API response format');
         }
         
         console.log('Raw response data:', JSON.stringify(data).substring(0, 150) + '...');
@@ -374,144 +361,86 @@ export default function InfiniteArticles({
         return;
       }
       
-      // Log information for debugging
-      console.log(`Page ${nextPage} loaded. Articles: ${data?.articles?.length}, Total: ${data?.pagination?.total}, Has more according to API: ${data?.pagination?.hasMore}`);
+      // Map the response data to the format required by our component
+      const newArticles = (data.articles || data.posts || []).slice(0, 30);
+      const pagination = data.pagination || {};
       
-      // Handle different API response formats (some endpoints use 'posts', others use 'articles')
-      const articlesData = data.articles || data.posts || [];
+      console.log(`Loaded ${newArticles?.length || 0} new articles, hasMore=${pagination.hasMore || false}`);
       
-      // Check if the API returned any articles
-      if (!articlesData || !Array.isArray(articlesData) || articlesData.length === 0) {
-        console.log('No articles returned from API, setting hasMore=false');
+      // Check for empty response when pagination says there should be more
+      if (newArticles.length === 0 && pagination.hasMore === true) {
+        // If the server says there are more posts but returns none, try the next page
+        console.warn(`API returned 0 articles for page ${nextPage} but claims there are more`);
+        
+        // Mark this page as problematic
+        failedPagesRef.current.add(nextPage);
+        setPage(nextPage); // Still advance the page
+        
+        setTimeout(() => {
+          loadingRef.current = false;
+          setLoading(false);
+          if (pagination.hasMore) {
+            loadMorePosts(); // Attempt to load the next page
+          }
+        }, 2000);
+        return;
+      }
+      
+      if (newArticles && newArticles.length > 0) {
+        // We successfully got articles
+        maxConsecutiveFailures.current = 0; // Reset the failure counter
+        
+        // Make a shallow copy of the display posts
+        const updatedPosts = [...localPosts];
+        
+        // Add only new articles that aren't already in our list
+        const currentIds = new Set(updatedPosts.map(p => p.slug));
+        newArticles.forEach(article => {
+          if (!currentIds.has(article.slug)) {
+            updatedPosts.push(article);
+          }
+        });
+        
+        setPosts(updatedPosts);
+        
+        if (!pagination.hasMore) {
+          setHasMore(false);
+        }
+      } else {
+        // No more articles
         setHasMore(false);
-        
-        // Wait at least 3 seconds before allowing another attempt
-        setTimeout(() => {
-          loadingRef.current = false;
-          setLoading(false);
-        }, 3000);
-        return;
-      } 
-      
-      // Filter out invalid/mock articles
-      const validArticles = articlesData.filter(article => 
-        article && 
-        article.slug && 
-        !article.slug.startsWith('placeholder-') && 
-        !article.slug.startsWith('mock-post-')
-      );
-      
-      console.log(`Found ${validArticles.length} valid articles out of ${articlesData.length}`);
-      
-      if (validArticles.length === 0) {
-        console.log('No valid articles after filtering, trying next page');
-        setPage(nextPage); // Increment the page number
-        
-        // Wait at least 2 seconds before trying the next page
-        setTimeout(() => {
-          loadingRef.current = false;
-          setLoading(false);
-          loadMorePosts(); // Try the next page automatically
-        }, 2000);
-        return;
       }
       
-      // Sort new articles by date (newest first) before adding to existing posts
-      const sortedNewArticles = [...validArticles].sort((a, b) => 
-        new Date(b.date) - new Date(a.date)
-      );
-      
-      // Log the first 3 new articles to help debug
-      console.log('First 3 new articles to be added:', 
-        sortedNewArticles.slice(0, 3).map(a => ({
-          title: a.title?.substring(0, 20) + '...',
-          slug: a.slug,
-          date: a.date
-        }))
-      );
-      
-      // Create a Set of existing slugs for faster duplicate detection
-      const existingSlugSet = new Set(localPosts.map(post => post.slug).filter(Boolean));
-      
-      // Filter out duplicates
-      const uniqueNewArticles = sortedNewArticles.filter(article => 
-        !existingSlugSet.has(article.slug)
-      );
-      
-      console.log(`Found ${uniqueNewArticles.length} unique articles after filtering duplicates`);
-      
-      if (uniqueNewArticles.length === 0) {
-        // Try one more page if no new unique articles
-        console.log('No unique articles found, skipping to next page');
-        setPage(nextPage);
-        
-        // Wait at least 2 seconds before trying the next page
-        setTimeout(() => {
-          loadingRef.current = false;
-          setLoading(false);
-          loadMorePosts(); // Try the next page automatically
-        }, 2000);
-        return;
-      }
-      
-      // Update the state with the new unique articles
-      setPosts(prevPosts => {
-        // Combine existing and new posts
-        const combinedPosts = [...prevPosts, ...uniqueNewArticles];
-        
-        // Sort all posts by date
-        const sortedPosts = combinedPosts.sort((a, b) => 
-          new Date(b.date || 0) - new Date(a.date || 0)
-        );
-        
-        console.log(`State update: Adding ${uniqueNewArticles.length} articles to existing ${prevPosts.length} for total of ${sortedPosts.length}`);
-        
-        return sortedPosts;
-      });
-      
-      // Only update the page state after successfully adding articles
+      // Update the page number
       setPage(nextPage);
       
-      // Check if we should have more based on total
-      const totalArticlesCount = data.pagination?.total || 4450;
-      const currentCount = localPosts.length + uniqueNewArticles.length;
-      const shouldHaveMore = currentCount < totalArticlesCount;
-      
-      console.log(`Current articles after update: ${currentCount}, Total available: ${totalArticlesCount}, Should have more: ${shouldHaveMore}`);
-      
-      // FORCE hasMore to true until we get to at least 100 articles to ensure we keep loading
-      if (currentCount < 100 || shouldHaveMore) {
-        console.log(`Setting hasMore=true because we have ${currentCount} articles and should have ${totalArticlesCount}`);
-        setHasMore(true);
-      } else {
-        // Otherwise trust the API's hasMore flag
-        const apiHasMore = data.pagination?.hasMore || false;
-        console.log(`Setting hasMore=${apiHasMore} based on API response`);
-        setHasMore(apiHasMore);
+      // Prefetch the next article if available
+      if (newArticles && newArticles.length > 0) {
+        // Queue prefetch for the first article of the next batch
+        setTimeout(() => {
+          newArticles.forEach(article => {
+            if (article && article.slug && !prefetchedArticles.has(article.slug)) {
+              prefetchedArticles.add(article.slug);
+              fetchArticle(article.slug).catch(() => {
+                // Silent fail for prefetch
+              });
+            }
+          });
+        }, 1000);
       }
       
-      // If we got here successfully, reset the consecutive failures counter
-      maxConsecutiveFailures.current = 0;
+      loadingRef.current = false;
+      setLoading(false);
       
-      // Wait a bit before allowing more loads to avoid rapid successive load attempts
-      setTimeout(() => {
-        loadingRef.current = false;
-        setLoading(false);
-      }, 1000);
-    } catch (error) {
-      console.error('Error in loadMorePosts:', error);
-      setError('Unable to load more articles. Please try again later.');
-      
-      // Increment the failures counter
+    } catch (err) {
+      // Handle any unhandled errors in the loadMore process
+      console.error('Error in loadMorePosts:', err);
+      setError(`Error loading posts: ${err.message}`);
       maxConsecutiveFailures.current += 1;
-      
-      // Wait before allowing more attempts
-      setTimeout(() => {
-        loadingRef.current = false;
-        setLoading(false);
-      }, 3000);
+      loadingRef.current = false;
+      setLoading(false);
     }
-  }, [page, loading, hasMoreState, onLoadMore, displayPosts.length, loadInitialPosts, localPosts])
+  }, [page, loading, hasMoreState, displayPosts, loadInitialPosts]);
   
   // Auto-loading effect with better stopping conditions
   useEffect(() => {
