@@ -2,8 +2,8 @@ name: Hourly Twitter Article Posting
 
 on:
   schedule:
-    # Run every hour
-    - cron: '0 * * * *'
+    # Run every half an hour
+    - cron: '0,30 * * * *'
   # Allow manual triggering
   workflow_dispatch:
 
