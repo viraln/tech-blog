@@ -22,12 +22,26 @@
   functions = "netlify/functions"
   publish = ".next"
 
-# Redirect API calls to Netlify Functions (for custom Netlify functions)
+# Specific redirect for article pagination API
+[[redirects]]
+  from = "/api/articles/page/*"
+  to = "/.netlify/functions/articles"
+  status = 200
+  force = true
+
+# Specific redirect for posts API
+[[redirects]]
+  from = "/api/posts"
+  to = "/.netlify/functions/posts"
+  status = 200
+  force = true
+
+# Redirect other API calls to Netlify Functions
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/:splat"
   status = 200
-  force = false
+  force = true
 
 # Handle client-side routing
 [[redirects]]
