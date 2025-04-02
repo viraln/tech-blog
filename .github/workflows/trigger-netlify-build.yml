@@ -1,1 +1,22 @@
- 
+name: Trigger Netlify Build Only (Every 8 Hours)
+
+on:
+  schedule:
+    # Run at 4 hours intervals offset from the generation (at hours 4, 12, 20)
+    - cron: '0 4,12,20 * * *'
+  # Allow manual triggering
+  workflow_dispatch:
+
+jobs:
+  trigger-netlify-build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        
+      - name: Trigger Netlify build
+        run: |
+          echo "Triggering Netlify build..."
+          curl -X POST -d {} https://api.netlify.com/build_hooks/${{ secrets.NETLIFY_BUILD_HOOK }}
+          echo "Netlify build triggered successfully." 
