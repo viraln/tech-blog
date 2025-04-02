@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "next dev",
-    "build": "next build && cd netlify/functions && npm install && cd ../.. && mkdir -p netlify/functions/content && cp -r content/articles netlify/functions/content/",
+    "build": "npm install --production=false && next build && cd netlify/functions && npm install && cd ../.. && mkdir -p netlify/functions/content && cp -r content/articles netlify/functions/content/",
     "start": "next start",
     "test:functions": "cd netlify/functions && npm install && node test-posts-function.js"
   },
@@ -16,6 +16,7 @@
     "@lottiefiles/react-lottie-player": "^3.6.0",
     "@tailwindcss/aspect-ratio": "^0.4.2",
     "@tailwindcss/typography": "^0.5.16",
+    "autoprefixer": "^10.4.21",
     "cheerio": "^1.0.0",
     "critters": "^0.0.25",
     "dompurify": "^3.2.4",
@@ -30,6 +31,7 @@
     "next-mdx-remote": "^5.0.0",
     "node-fetch": "^2.7.0",
     "openai": "^4.87.3",
+    "postcss": "^8.5.3",
     "react": "^18.2.0",
     "react-copy-to-clipboard": "^5.1.0",
     "react-dom": "^18.2.0",
@@ -47,15 +49,13 @@
     "remark-gfm": "^4.0.1",
     "remark-html": "^16.0.1",
     "remark-unwrap-images": "^5.0.0",
-    "sharp": "^0.33.5"
+    "sharp": "^0.33.5",
+    "tailwindcss": "^3.4.17"
   },
   "devDependencies": {
     "@types/node": "^22.13.10",
     "@types/react": "^19.0.10",
-    "autoprefixer": "^10.4.21",
     "canvas-confetti": "^1.9.3",
-    "postcss": "^8.5.3",
-    "tailwindcss": "^3.4.17",
     "typescript": "^5.8.2"
   }
 }
