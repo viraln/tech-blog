@@ -45,6 +45,22 @@ export default async function handler(req, res) {
       limit
     });
     
+    // Ensure we have a valid result object
+    if (!result || typeof result !== 'object') {
+      console.error('Invalid result from getAllArticles:', result);
+      return res.status(500).json({ 
+        error: 'Failed to fetch articles',
+        message: 'Invalid data structure returned from articles source'
+      });
+    }
+    
+    // Ensure articles property exists and is an array
+    if (!result.articles || !Array.isArray(result.articles)) {
+      console.error('Articles property is not an array:', result.articles);
+      // Initialize with empty array to prevent errors
+      result.articles = [];
+    }
+    
     // Additional validation to ensure we only return valid articles
     if (result && result.articles) {
       result.articles = result.articles.filter(article => {
@@ -63,10 +79,21 @@ export default async function handler(req, res) {
       });
       
       // Update pagination info if we filtered out articles
-      if (result.articles.length < result.pagination.total) {
-        result.pagination.total = result.articles.length;
-        result.pagination.totalPages = Math.ceil(result.articles.length / limit);
-        result.pagination.hasMore = pageNum < result.pagination.totalPages;
+      if (result.pagination) {
+        if (result.articles.length < result.pagination.total) {
+          result.pagination.total = result.articles.length;
+          result.pagination.totalPages = Math.ceil(result.articles.length / limit);
+          result.pagination.hasMore = pageNum < result.pagination.totalPages;
+        }
+      } else {
+        // Create pagination object if it doesn't exist
+        result.pagination = {
+          page: pageNum,
+          limit,
+          total: result.articles.length,
+          totalPages: Math.ceil(result.articles.length / limit),
+          hasMore: false
+        };
       }
     }
     

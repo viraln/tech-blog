@@ -221,6 +221,19 @@ exports.handler = async (event, context) => {
     const allPosts = getAllPosts();
     console.log(`Retrieved ${allPosts.length} total posts`);
     
+    // Ensure allPosts is an array before attempting to slice
+    if (!Array.isArray(allPosts)) {
+      console.error('getAllPosts did not return an array:', allPosts);
+      return {
+        statusCode: 500,
+        headers,
+        body: JSON.stringify({ 
+          error: 'Internal server error',
+          message: 'Posts data is not in the expected format'
+        })
+      };
+    }
+    
     // Calculate pagination
     const start = (pageNumber - 1) * POSTS_PER_PAGE;
     const end = start + POSTS_PER_PAGE;
@@ -248,19 +261,23 @@ exports.handler = async (event, context) => {
       headers: addCorsHeaders(),
       body: JSON.stringify({
         posts: trimmedPosts,
-        hasMore: end < allPosts.length,
-        totalPosts: allPosts.length
+        pagination: {
+          page: pageNumber,
+          limit: POSTS_PER_PAGE,
+          total: allPosts.length,
+          totalPages: Math.ceil(allPosts.length / POSTS_PER_PAGE),
+          hasMore: end < allPosts.length
+        }
       })
     };
   } catch (error) {
-    console.error('Error in posts API:', error);
+    console.error('Error in posts function:', error);
     return {
       statusCode: 500,
       headers,
       body: JSON.stringify({ 
-        error: 'Error fetching posts',
-        message: error.message,
-        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        error: 'Internal server error',
+        message: error.message 
       })
     };
   }
