@@ -1,9 +1,9 @@
-name: Hourly Article Generation
+name: Article Generation With Build (Every 8 Hours)
 
 on:
   schedule:
-    # Run every hour at 0 minutes
-    - cron: '0 * * * *'
+    # Run every 8 hours (at hours 0, 8, 16)
+    - cron: '0 0,8,16 * * *'
   # Allow manual triggering from GitHub Actions tab with optional inputs
   workflow_dispatch:
     inputs:
@@ -73,7 +73,7 @@ jobs:
           git add netlify/functions/content/articles/ || echo "No netlify/functions/content/articles/ directory"
           
           # Commit and push if there are changes
-          git commit -m "new-articles $(date +%Y-%m-%d-%H%M)" || echo "No changes to commit"
+          git commit -m "new-articles-with-build $(date +%Y-%m-%d-%H%M)" || echo "No changes to commit"
           git push
           
       - name: Trigger Netlify build

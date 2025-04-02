@@ -2,8 +2,8 @@ name: Hourly Article Generation Without Build
 
 on:
   schedule:
-    # Run every hour at 30 minutes
-    - cron: '30 * * * *'
+    # Run every hour at 0 minutes except for hours divisible by 8 (0, 8, 16)
+    - cron: '0 1-7,9-15,17-23 * * *'
   # Allow manual triggering from GitHub Actions tab with optional inputs
   workflow_dispatch:
     inputs:
@@ -71,7 +71,8 @@ jobs:
           git add netlify/functions/content/articles/ || echo "No netlify/functions/content/articles/ directory"
           
           # Commit and push if there are changes
-          git commit -m "new-articles-no-build $(date +%Y-%m-%d-%H%M)" || echo "No changes to commit"
+          # Add [skip netlify] to the commit message to prevent Netlify from building
+          git commit -m "new-articles-no-build [skip netlify] $(date +%Y-%m-%d-%H%M)" || echo "No changes to commit"
           git push
           
       # No Netlify build trigger in this workflow 
