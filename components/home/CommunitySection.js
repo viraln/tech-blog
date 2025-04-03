@@ -36,7 +36,7 @@ export default function CommunitySection() {
         <a href="https://twitter.com/intent/follow?screen_name=trendiingz" target="_blank" className="w-full bg-white text-blue-600 rounded-lg px-4 py-2 font-medium hover:bg-blue-50 transition-all duration-200 transform hover:scale-105">
           Join Now →
         </a>
-        <p className="text-xs mt-2 text-blue-200">50,000+ active members</p>
+        {/* <p className="text-xs mt-2 text-blue-200">50,000+ active members</p> */}
       </div>
     </div>
   )
