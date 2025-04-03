@@ -40,7 +40,7 @@ jobs:
       - name: Generate new articles
         run: |
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            node scripts/generate-topic-articles.js --random --count=${{ github.event.inputs.article_count }} --force
+            node scripts/generate-topic-articles.js --random --count=${{ github.event.inputs.article_count }} --force --concurrency=3
           else
             node scripts/generate-topic-articles.js --random --count=50 --force --concurrency=2
           fi
