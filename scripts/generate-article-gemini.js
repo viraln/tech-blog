@@ -24,7 +24,8 @@ const apiKeyManager = require('./utils/api-key-manager');
 
 // Constants
 const UNSPLASH_API_URL = 'https://api.unsplash.com';
-const GEMINI_MODEL = 'gemini-2.0-flash';
+const GEMINI_MODEL = 'gemini-1.5-flash';
+// const GEMINI_MODEL = 'gemini-2.0-flash';
 // 'gemini-1.5-flash'; // Using Gemini 1.5 Flash for better content generation
 
 // Logging System
