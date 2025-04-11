@@ -20,7 +20,8 @@ import SocialShare from '../../components/blog/SocialShare';
 import TOCButton from '../../components/blog/TOCButton';
 import FloatingShareBar from '../../components/blog/FloatingShareBar';
 import AuthorBox from '../../components/blog/AuthorBox';
-import RelatedArticles from '../../components/blog/RelatedArticles';
+import BlogRelatedArticles from '../../components/blog/RelatedArticles'; // Rename to avoid conflict
+import TopicRelatedArticles from '../../components/RelatedArticles'; // Import our new API-powered component
 import TableOfContents from '../../components/blog/TableOfContents';
 import BlogEditor from '../../components/blog/BlogEditor';
 
@@ -1731,100 +1732,142 @@ export default function Post({ frontMatter, content, slug, relatedArticles: rawR
                 Articles related to {frontMatter.category}
               </span>
             </h2>
+
+            {/* API-powered Topic Related Articles */}
+            {frontMatter.categories || frontMatter.topics || frontMatter.category ? (
+              <div className="mb-10">
+                <h3 className="text-lg font-semibold mb-5">Discover more articles on this topic</h3>
+                {/* If topics are available, use the first topic */}
+                {frontMatter.topics && frontMatter.topics.length > 0 ? (
+                  <TopicRelatedArticles
+                    topic={typeof frontMatter.topics[0] === 'string' ? frontMatter.topics[0] : frontMatter.topics[0].id || frontMatter.topics[0].slug}
+                    title={null}
+                    limit={3}
+                    minScore={50}
+                    showRelevanceScore={true}
+                  />
+                ) : 
+                /* Otherwise try using categories */
+                frontMatter.categories && frontMatter.categories.length > 0 ? (
+                  <TopicRelatedArticles
+                    topic={typeof frontMatter.categories[0] === 'string' ? frontMatter.categories[0] : frontMatter.categories[0].id || frontMatter.categories[0].slug}
+                    title={null}
+                    limit={3}
+                    minScore={40}
+                    showRelevanceScore={true}
+                  />
+                ) : 
+                /* Finally fall back to main category */
+                frontMatter.category ? (
+                  <TopicRelatedArticles
+                    topic={frontMatter.category}
+                    title={null}
+                    limit={3}
+                    minScore={30}
+                    showRelevanceScore={true}
+                  />
+                ) : null}
+              </div>
+            ) : null}
+
+            {/* Static Related Articles from props */}
             {processedRelatedArticles && processedRelatedArticles.length > 0 ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-                {processedRelatedArticles.map((article, index) => {
-                  // Extract category names from the article's categories
-                  const articleCategoryNames = article.categories && Array.isArray(article.categories)
-                    ? article.categories.map(cat => typeof cat === 'string' ? cat : (cat.name || '')).filter(Boolean)
-                    : [];
-                  
-                  // Extract current article's category names
-                  const currentCategoryNames = frontMatter.categories && Array.isArray(frontMatter.categories)
-                    ? frontMatter.categories.map(cat => typeof cat === 'string' ? cat : (cat.name || '')).filter(Boolean)
-                    : [];
-                  
-                  // Find matching categories
-                  const matchingCategories = articleCategoryNames.filter(catName => 
-                    currentCategoryNames.some(currentCat => 
-                      currentCat.toLowerCase() === catName.toLowerCase() || 
-                      currentCat.toLowerCase().includes(catName.toLowerCase()) ||
-                      catName.toLowerCase().includes(currentCat.toLowerCase())
-                    )
-                  );
-                  
-                  return (
-                  <a
-                    href={`/posts/${article.slug}`}
-                    key={`related-${article.slug}-${index}`}
-                    className="bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow group h-full flex flex-col"
-                  >
-                    <div className="relative h-36 sm:h-40 w-full">
-                      <Image
-                        src={article.image}
-                        alt={article.title}
-                        fill
-                        className="object-cover"
-                        sizes="(max-width: 640px) 100vw, (max-width: 768px) 50vw, 33vw"
-                        unoptimized={article.image.includes('unsplash.com') || article.image.includes('http')}
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                        {matchingCategories.length > 0 && (
-                          <div className="absolute top-3 right-3 bg-purple-600 text-white text-xs px-2 py-1 rounded-md">
-                            Matching Topic
-                          </div>
-                        )}
-                    </div>
-                    <div className="p-4 sm:p-5 flex-grow flex flex-col justify-between">
-                      <div>
-                          <div className="flex flex-wrap gap-1.5 mb-2">
-                            {article.category && (
-                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                                matchingCategories.includes(article.category) 
-                                  ? 'bg-indigo-200 text-indigo-800' 
-                                  : 'bg-indigo-100 text-indigo-800'
-                              }`}>
-                            {article.category}
-                          </span>
-                            )}
-                            {articleCategoryNames.length > 0 && articleCategoryNames.slice(0, 2).map((catName, i) => {
-                              if (catName === article.category) return null;
-                              const isMatching = matchingCategories.includes(catName);
-                              return (
-                                <span 
-                                  key={`cat-${i}`}
-                                  className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                                    isMatching 
-                                      ? 'bg-purple-200 text-purple-800' 
-                                      : 'bg-gray-100 text-gray-800'
-                                  }`}
-                                >
-                                  {catName}
-                                </span>
-                              );
-                            })}
-                            {articleCategoryNames.length > 2 && (
-                              <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-800 rounded-full font-medium">
-                                +{articleCategoryNames.length - 2} more
-                              </span>
-                            )}
+              <div>
+                <h3 className="text-lg font-semibold mb-5">Also from our editors</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+                  {processedRelatedArticles.map((article, index) => {
+                    // Extract category names from the article's categories
+                    const articleCategoryNames = article.categories && Array.isArray(article.categories)
+                      ? article.categories.map(cat => typeof cat === 'string' ? cat : (cat.name || '')).filter(Boolean)
+                      : [];
+                    
+                    // Extract current article's category names
+                    const currentCategoryNames = frontMatter.categories && Array.isArray(frontMatter.categories)
+                      ? frontMatter.categories.map(cat => typeof cat === 'string' ? cat : (cat.name || '')).filter(Boolean)
+                      : [];
+                    
+                    // Find matching categories
+                    const matchingCategories = articleCategoryNames.filter(catName => 
+                      currentCategoryNames.some(currentCat => 
+                        currentCat.toLowerCase() === catName.toLowerCase() || 
+                        currentCat.toLowerCase().includes(catName.toLowerCase()) ||
+                        catName.toLowerCase().includes(currentCat.toLowerCase())
+                      )
+                    );
+                    
+                    return (
+                      <a
+                        href={`/posts/${article.slug}`}
+                        key={`related-${article.slug}-${index}`}
+                        className="bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow group h-full flex flex-col"
+                      >
+                        <div className="relative h-36 sm:h-40 w-full">
+                          <Image
+                            src={article.image}
+                            alt={article.title}
+                            fill
+                            className="object-cover"
+                            sizes="(max-width: 640px) 100vw, (max-width: 768px) 50vw, 33vw"
+                            unoptimized={article.image.includes('unsplash.com') || article.image.includes('http')}
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                          {matchingCategories.length > 0 && (
+                            <div className="absolute top-3 right-3 bg-purple-600 text-white text-xs px-2 py-1 rounded-md">
+                              Matching Topic
+                            </div>
+                          )}
                         </div>
-                        <h3 className="text-base sm:text-lg font-semibold text-gray-800 group-hover:text-indigo-600 transition-colors line-clamp-2 mb-2">
-                          {article.title}
-                        </h3>
-                        <p className="text-xs sm:text-sm text-gray-600 line-clamp-2 mb-3 sm:mb-4">
-                          {article.excerpt}
-                        </p>
-                      </div>
-                      <div className="flex items-center text-xs text-gray-500">
-                        <span>{article.readingTime} min read</span>
-                        <span className="mx-2">•</span>
-                        <span>{getRelativeTime(new Date(article.date))}</span>
-                      </div>
-                    </div>
-                  </a>
-                  );
-                })}
+                        <div className="p-4 sm:p-5 flex-grow flex flex-col justify-between">
+                          <div>
+                            <div className="flex flex-wrap gap-1.5 mb-2">
+                              {article.category && (
+                                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                                  matchingCategories.includes(article.category) 
+                                    ? 'bg-indigo-200 text-indigo-800' 
+                                    : 'bg-indigo-100 text-indigo-800'
+                                }`}>
+                                  {article.category}
+                                </span>
+                              )}
+                              {articleCategoryNames.length > 0 && articleCategoryNames.slice(0, 2).map((catName, i) => {
+                                if (catName === article.category) return null;
+                                const isMatching = matchingCategories.includes(catName);
+                                return (
+                                  <span 
+                                    key={`cat-${i}`}
+                                    className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                                      isMatching 
+                                        ? 'bg-purple-200 text-purple-800' 
+                                        : 'bg-gray-100 text-gray-800'
+                                    }`}
+                                  >
+                                    {catName}
+                                  </span>
+                                );
+                              })}
+                              {articleCategoryNames.length > 2 && (
+                                <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-800 rounded-full font-medium">
+                                  +{articleCategoryNames.length - 2} more
+                                </span>
+                              )}
+                            </div>
+                            <h3 className="text-base sm:text-lg font-semibold text-gray-800 group-hover:text-indigo-600 transition-colors line-clamp-2 mb-2">
+                              {article.title}
+                            </h3>
+                            <p className="text-xs sm:text-sm text-gray-600 line-clamp-2 mb-3 sm:mb-4">
+                              {article.excerpt}
+                            </p>
+                          </div>
+                          <div className="flex items-center text-xs text-gray-500">
+                            <span>{article.readingTime} min read</span>
+                            <span className="mx-2">•</span>
+                            <span>{getRelativeTime(new Date(article.date))}</span>
+                          </div>
+                        </div>
+                      </a>
+                    );
+                  })}
+                </div>
               </div>
             ) : (
               <div className="p-6 bg-white rounded-xl shadow-sm text-center">
@@ -1848,6 +1891,41 @@ export default function Post({ frontMatter, content, slug, relatedArticles: rawR
               initialLoadOnMount={true}
               forceLoad={forceLoadMoreArticles} // Add force load function for manual loading
             />
+          </div>
+        </div>
+
+        {/* API-powered Topic Related Articles */}
+        <div className="bg-white py-8">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+            <h2 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-6 sm:mb-8">
+              More Articles on This Topic
+            </h2>
+            
+            {frontMatter.topics && frontMatter.topics.length > 0 ? (
+              <TopicRelatedArticles
+                topic={typeof frontMatter.topics[0] === 'string' ? frontMatter.topics[0] : frontMatter.topics[0].id || frontMatter.topics[0].slug}
+                title={null}
+                limit={4}
+                minScore={50}
+                showRelevanceScore={true}
+              />
+            ) : frontMatter.categories && frontMatter.categories.length > 0 ? (
+              <TopicRelatedArticles
+                topic={typeof frontMatter.categories[0] === 'string' ? frontMatter.categories[0] : frontMatter.categories[0].id || frontMatter.categories[0].slug}
+                title={null}
+                limit={4}
+                minScore={40}
+                showRelevanceScore={true}
+              />
+            ) : frontMatter.category ? (
+              <TopicRelatedArticles
+                topic={frontMatter.category}
+                title={null}
+                limit={4}
+                minScore={30}
+                showRelevanceScore={true}
+              />
+            ) : null}
           </div>
         </div>
       </article>
