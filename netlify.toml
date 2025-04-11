@@ -15,7 +15,7 @@
   # Increase function timeout for potential slow operations
   node_bundler = "esbuild"
   included_files = ["content/**/*"]
-  external_node_modules = ["gray-matter", "remark", "remark-html", "remark-gfm"]
+  external_node_modules = ["gray-matter", "remark", "remark-html", "remark-gfm", "node-fetch"]
 
 [dev]
   # Settings for netlify dev
