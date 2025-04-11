@@ -2,12 +2,26 @@ import '../styles/globals.css'
 import '../styles/animations.css'
 import '../styles/article-fixes.css'
 import '../styles/images.css'
-import { useEffect } from 'react'
-import DataPrefetcher from '../components/DataPrefetcher'
-// Remove the direct import to avoid including server-side code
-// import { preloadArticleCache } from '../utils/articleUtils'
+import { useEffect, useState } from 'react'
+// Import DataPrefetcher dynamically to avoid webpack issues
 
 function MyApp({ Component, pageProps }) {
+  const [DataPrefetcherLoaded, setDataPrefetcherLoaded] = useState(null);
+
+  // Load DataPrefetcher component dynamically
+  useEffect(() => {
+    const loadPrefetcher = async () => {
+      try {
+        const { default: DataPrefetcher } = await import('../components/DataPrefetcher');
+        setDataPrefetcherLoaded(() => DataPrefetcher);
+      } catch (error) {
+        console.warn("DataPrefetcher couldn't be loaded, continuing without it:", error.message);
+      }
+    };
+    
+    loadPrefetcher();
+  }, []);
+
   // Handle service worker cleanup and error suppression
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -80,7 +94,7 @@ function MyApp({ Component, pageProps }) {
   return (
     <>
       {/* Add the DataPrefetcher to preload critical resources */}
-      <DataPrefetcher />
+      {DataPrefetcherLoaded && <DataPrefetcherLoaded />}
       <Component {...pageProps} />
     </>
   )

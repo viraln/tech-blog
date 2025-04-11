@@ -3,6 +3,9 @@
  * debouncing, deduplication, and batching
  */
 
+// Make sure we're in a browser environment before initializing
+const isBrowser = typeof window !== 'undefined';
+
 // In-memory request cache
 const cache = new Map();
 const CACHE_TTL = 5 * 60 * 1000; // Increase cache lifetime to 5 minutes
@@ -23,6 +26,8 @@ const inFlightRequests = new Map();
 
 // Process the request queue
 function processRequestQueue() {
+  if (!isBrowser) return;
+  
   // Process as many requests as we can (up to MAX_CONCURRENT_REQUESTS)
   while (requestQueue.length > 0 && activeRequests < MAX_CONCURRENT_REQUESTS) {
     const { execute } = requestQueue.shift();
@@ -36,6 +41,11 @@ function processRequestQueue() {
 
 // Add a request to the queue
 function queueRequest(executeFunc) {
+  if (!isBrowser) {
+    // Fallback for server-side or non-browser environments
+    return executeFunc();
+  }
+  
   return new Promise((resolve, reject) => {
     const execute = () => {
       return executeFunc()

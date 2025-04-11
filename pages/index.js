@@ -11,6 +11,7 @@ import { HotTakeSection, DailyDigestSection, MindblownSection, QuickBitesSection
 import Footer from '../components/layout/Footer'
 import CompactCard from '../components/CompactCard'
 import ShimmerImage from '../components/ShimmerImage'
+import TopicExplorer from '../components/TopicExplorer'
 import { getArticleBySlug } from '../utils/articleUtils'
 import { topicCategories } from '../data/topics'
 import { cachedFetch } from '../utils/lazyFetch'
@@ -1599,7 +1600,7 @@ export default function Home({ posts: serverPosts, hasMore, totalPosts }) {
         `}</style>
       </Head>
 
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-gradient-to-b from-white to-gray-50">
         <Header />
         <TopicNav 
           className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 mb-4 sm:mb-6" 
@@ -1739,6 +1740,16 @@ export default function Home({ posts: serverPosts, hasMore, totalPosts }) {
         {/* Bottom CTA */}
         <BottomCTA />
 
+        {/* Add the TopicExplorer component right before the Footer */}
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 pb-16">
+          <TopicExplorer 
+            title="Explore Popular Topics" 
+            subtitle="Discover our most popular topics with fresh content"
+            limit={8}
+            featuredOnly={true}
+          />
+        </div>
+        
         <Footer />
 
         {/* Scroll to top button - more mobile friendly positioning */}
