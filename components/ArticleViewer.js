@@ -138,6 +138,8 @@ const ArticleViewer = ({ content }) => {
       .callout-expert { 
         background: linear-gradient(135deg, #EEF2FF 0%, #E0E7FF 100%);
         border-top: 5px solid #6366F1;
+        padding: 1.75rem; 
+        box-shadow: 0 12px 30px rgba(99, 102, 241, 0.15);
       }
       .callout-quote { 
         background: linear-gradient(135deg, #F5F3FF 0%, #EDE9FE 100%);
@@ -158,8 +160,9 @@ const ArticleViewer = ({ content }) => {
       
       .callout-title {
         font-size: 1.25rem;
-        color: #111827;
-        letter-spacing: -0.025em;
+        color: #4338CA;
+        font-weight: 800;
+        letter-spacing: 0.02em;
       }
       
       .callout-content {
@@ -1036,145 +1039,11 @@ const ArticleViewer = ({ content }) => {
         return <>{props.children}</>;
       }
       
-      // Get content as string
-      let content = '';
-      if (typeof props.children === 'string') {
-        content = props.children;
-      } else {
-        // Check if this paragraph is a caption (contains only an em/italic element or text followed by em/italic)
-        const children = React.Children.toArray(props.children);
-        
-        // Case 1: Paragraph with single em element
-        if (children.length === 1 && React.isValidElement(children[0]) && children[0].type === 'em') {
-          const emText = children[0].props.children?.toString() || '';
-          
-          // Check if it's an attribution caption
-          if (emText.includes('Photo by') || emText.includes('Source:') || emText.match(/on \[.*?\]/)) {
-            // It might have description text before attribution
-            const attributionIndex = Math.max(
-              emText.indexOf('Photo by') !== -1 ? emText.indexOf('Photo by') : Infinity,
-              emText.indexOf('Source:') !== -1 ? emText.indexOf('Source:') : Infinity
-            );
-            
-            // Check for "on [Platform]" pattern
-            const onMatch = emText.match(/ on (Unsplash|Pexels|Pixabay|Flickr|Getty|Shutterstock)/i);
-            let onIndex = onMatch ? emText.indexOf(onMatch[0]) : Infinity;
-            
-            // If there's an "on [Platform]" but no "Photo by", find the best starting point
-            // Look for a name preceding it (capital letter words)
-            if (onMatch && attributionIndex === Infinity) {
-              // Find all names with capital letters that might be the photographer
-              const beforeOnText = emText.substring(0, onIndex);
-              const potentialNames = beforeOnText.match(/[A-Z][a-z]+ [A-Z][a-z]+|[A-Z][a-z]+/g);
-              
-              if (potentialNames && potentialNames.length > 0) {
-                // Take the last name match as it's most likely the photographer
-                const lastName = potentialNames[potentialNames.length - 1];
-                const nameIndex = beforeOnText.lastIndexOf(lastName);
-                
-                if (nameIndex !== -1) {
-                  // Found a potential name, show "Photo by [Name] on [Platform]"
-                  return (
-                    <p className="text-center text-xs text-gray-500 mt-2 italic">
-                      <em>Photo by {lastName}{onMatch[0]}</em>
-                    </p>
-                  );
-                }
-              }
-              
-              // If we got this far, we found "on Platform" but no clear name
-              if (onIndex > 0 && onIndex < emText.length - 5) {
-                // Just start at "on [Platform]" - it's better than showing the description
-                return (
-                  <p className="text-center text-xs text-gray-500 mt-2 italic">
-                    <em>Source:{onMatch[0]}</em>
-                  </p>
-                );
-              }
-            }
-            
-            // If we found attribution and it's not at the start (has description before it)
-            if (attributionIndex !== Infinity && attributionIndex > 0) {
-              const attributionText = emText.substring(attributionIndex);
-              return (
-                <p className="text-center text-xs text-gray-500 mt-2 italic">
-                  <em>{attributionText}</em>
-                </p>
-              );
-            }
-            
-            // Just attribution, show as is
-            return (
-              <p className="text-center text-xs text-gray-500 mt-2 italic">
-                {children}
-              </p>
-            );
-          }
-          
-          // If it looks like a descriptive caption (no attribution info), hide it
-          if (!emText.includes('Photo by') && !emText.includes('Source:') && !emText.match(/on \[.*?\]/)) {
-            return null;
-          }
-        }
-      }
-      
-      // Check if the content is an emoji list item
-      if (typeof content === 'string') {
-        // Use a simpler emoji detection approach that doesn't rely on Unicode property escapes
-        const emojiListMatch = content.match(/^(\*|\-)\s+([^\s\w])\s+(.+)$/);
-        
-        if (emojiListMatch) {
-          const emoji = emojiListMatch[2];
-          const text = emojiListMatch[3];
-          
-          return (
-            <div className="emoji-list-item">
-              <span className="emoji-bullet">{emoji}</span>
-              <span>{text}</span>
-            </div>
-          );
-        }
-      }
-      
-      // Normal paragraph rendering
+      // Simplified paragraph rendering - remove caption detection logic
       return <p className="mb-6 text-gray-700 leading-relaxed">{props.children}</p>;
     },
     em: (props) => {
-      const textContent = props.children?.toString() || '';
-      
-      // If this contains attribution info
-      if (textContent.includes('Photo by') || textContent.includes('Source:') || textContent.match(/on \[.*?\]/)) {
-        // Check if there's a description before the attribution
-        const attributionIndex = Math.max(
-          textContent.indexOf('Photo by') !== -1 ? textContent.indexOf('Photo by') : Infinity,
-          textContent.indexOf('Source:') !== -1 ? textContent.indexOf('Source:') : Infinity
-        );
-        
-        // If we found an attribution marker and it's not at the start of the text
-        if (attributionIndex !== Infinity && attributionIndex > 0) {
-          // Extract only the attribution part
-          const attributionText = textContent.substring(attributionIndex);
-          return <em>{attributionText}</em>;
-        }
-        
-        // This is just an attribution caption, keep it
-        return <em {...props} />;
-      }
-      
-      // If it looks like a descriptive caption
-      if (textContent.startsWith('A ') || textContent.startsWith('An ') || textContent.startsWith('The ')) {
-        // Check if the parent is already handling this
-        const parentType = props.node?.parent?.type;
-        if (parentType === 'paragraph' && 
-            !textContent.includes('Photo by') && 
-            !textContent.includes('Source:') && 
-            !textContent.match(/on \[.*?\]/)) {
-          // This is likely a descriptive caption, hide it
-          return null;
-        }
-      }
-      
-      // Regular emphasis
+      // Simplified emphasis rendering - remove caption detection logic
       return <em className="italic" {...props} />;
     },
     ul: (props) => {
@@ -1184,36 +1053,48 @@ const ArticleViewer = ({ content }) => {
       return <ol className="list-decimal pl-6 mb-6 space-y-3 text-gray-700" {...props} />;
     },
     li: (props) => {
-      // Check if this is an emoji bullet
-      let content = props.children;
+      let children = props.children; 
+      let isEmojiListItem = false;
+      let emoji = null;
+      let itemContent = children; // Default to original children
+
+      // Use a more robust regex for matching various emoji types
+      // Correct regex literal syntax with single backslashes for \p
+      const emojiRegex = /^(\p{Emoji}|\p{Emoji_Presentation}|\p{Emoji_Modifier_Base}|\p{Emoji_Modifier})\s+(.*)/u;
       
-      // If content is a string or array, check for emoji
-      if (typeof content === 'string') {
-        const emojiMatch = content.match(/^([\p{Emoji}])\s+(.*)/u);
+      if (Array.isArray(children) && children.length > 0 && typeof children[0] === 'string') {
+        const emojiMatch = children[0].match(emojiRegex);
+
         if (emojiMatch) {
-          const [_, emoji, text] = emojiMatch;
-          return (
-            <li className="emoji-list-item mb-3 pl-2">
-              <span className="emoji-bullet mr-2 text-lg inline-block align-middle">{emoji}</span>
-              <span>{text}</span>
-            </li>
-          );
+          isEmojiListItem = true;
+          emoji = emojiMatch[1];
+          const text = emojiMatch[2];
+          
+          // Create a *new* array for the content, replacing the first element
+          // Ensure the rest of the children are included if they exist
+          itemContent = [text, ...(children.length > 1 ? children.slice(1) : [])]; 
         }
-      } else if (Array.isArray(content) && content.length > 0 && typeof content[0] === 'string') {
-        const emojiMatch = content[0].match(/^([\p{Emoji}])\s+(.*)/u);
+      } else if (typeof children === 'string') {
+        const emojiMatch = children.match(emojiRegex);
         if (emojiMatch) {
-          const [_, emoji, text] = emojiMatch;
-          content[0] = text;
-          return (
-            <li className="emoji-list-item mb-3 pl-2">
-              <span className="emoji-bullet mr-2 text-lg inline-block align-middle">{emoji}</span>
-              <span>{content}</span>
-            </li>
-          );
+          isEmojiListItem = true;
+          emoji = emojiMatch[1];
+          itemContent = emojiMatch[2]; // Just the text part
         }
       }
-      
-      // Regular list item
+
+      if (isEmojiListItem) {
+        // Render the specific structure for emoji list items
+        return (
+          <li className="emoji-list-item mb-3 pl-2">
+            <span className="emoji-bullet mr-2 text-lg inline-block align-middle">{emoji}</span>
+            {/* Pass the potentially modified content */}
+            <span>{itemContent}</span> 
+          </li>
+        );
+      }
+
+      // Regular list item rendering (no emoji detected)
       return <li className="mb-2 pl-1" {...props} />;
     },
     a: (props) => {
@@ -1295,9 +1176,13 @@ const ArticleViewer = ({ content }) => {
         transform: "translateZ(0)"
       };
       
-      // Get any alt text that might be a caption
-      const caption = props.alt || '';
+      // Use alt text primarily for the img alt attribute
+      const altText = props.alt || ''; 
       
+      // Check if the alt text *only* contains attribution information
+      const attributionRegex = /^(Photo by|Source:|Image by|Credit:|Courtesy of)/i;
+      const isAttribution = attributionRegex.test(altText.trim());
+
       return (
         <figure className="my-8">
           <div className="article-image-wrapper">
@@ -1310,17 +1195,20 @@ const ArticleViewer = ({ content }) => {
             >
               <img
                 {...props}
+                alt={altText} // Use the original alt text here
                 style={imageStyle}
                 className="article-image"
                 loading="lazy"
               />
             </span>
           </div>
-          {caption && (!/^[A-Za-z0-9].*[.!?]$/.test(caption) || /(Photo by|Source:|Credit:|Courtesy of)/i.test(caption)) && (
+          {/* Only render figcaption if the alt text IS attribution */}
+          {isAttribution && (
             <figcaption 
-              className={/(Photo by|Source:|Credit:|Courtesy of)/i.test(caption) ? "article-image-attribution" : "article-image-caption"} 
+              className="article-image-attribution" 
               dangerouslySetInnerHTML={{ 
-                __html: processImageCaption(caption)
+                // Ensure processImageCaption only gets the raw alt text here
+                __html: processImageCaption(altText) 
               }}
             />
           )}
@@ -1451,133 +1339,18 @@ const ArticleViewer = ({ content }) => {
       return <summary {...props} />;
     },
     figure: (props) => (
-      <figure {...props} className="my-8" />
+      // Remove default figure handling, as img component now wraps in figure
+      <>{props.children}</>
     ),
     figcaption: (props) => {
-      // Check if the figcaption contains attribution information
-      const captionText = props.children ? props.children.toString() : '';
-      
-      // Extract only the attribution part (anything after "Photo by" or similar patterns)
-      const attributionRegex = /(Photo by|Source:|Image by|Credit:|Courtesy of)(.+)$/i;
-      const attributionMatch = captionText.match(attributionRegex);
-      
-      if (attributionMatch) {
-        // Only show the attribution part
-        let attributionText = attributionMatch[0];
-        
-        // Check for Unsplash mentions in the attribution text
-        if (attributionText.includes('Unsplash')) {
-          // Check for markdown links to Unsplash
-          attributionText = attributionText.replace(/\[([^\]]+)\]\((https?:\/\/(?:www\.)?unsplash\.com[^)]*)\)/g, (match, text, url) => {
-            // Add UTM parameters to Unsplash links
-            const baseUrl = url.split('?')[0];
-            return `[${text}](${baseUrl}?utm_source=trendiingz&utm_medium=referral)`;
-          });
-          
-          // For plain text mentions of Unsplash without links
-          attributionText = attributionText.replace(/(\son\s+)Unsplash(?!\])/g, '$1<a href="https://unsplash.com?utm_source=trendiingz&utm_medium=referral" target="_blank" rel="noopener noreferrer" class="text-gray-600 hover:text-indigo-600 transition-colors">Unsplash</a>');
-        }
-        
-        return (
-          <figcaption {...props} className="text-center text-xs text-gray-500 mt-2 italic">
-            <span dangerouslySetInnerHTML={{ __html: attributionText }} />
-          </figcaption>
-        );
-      } else if (captionText.includes('Photo by') || captionText.includes('Source')) {
-        // If there's attribution somewhere in the text but regex didn't catch it
-        const photoByIndex = captionText.indexOf('Photo by');
-        const sourceIndex = captionText.indexOf('Source');
-        
-        let startIndex = -1;
-        if (photoByIndex !== -1) startIndex = photoByIndex;
-        else if (sourceIndex !== -1) startIndex = sourceIndex;
-        
-        if (startIndex !== -1) {
-          let attributionText = captionText.substring(startIndex);
-          
-          // Check for Unsplash mentions in the attribution text
-          if (attributionText.includes('Unsplash')) {
-            // Check for markdown links to Unsplash
-            attributionText = attributionText.replace(/\[([^\]]+)\]\((https?:\/\/(?:www\.)?unsplash\.com[^)]*)\)/g, (match, text, url) => {
-              // Add UTM parameters to Unsplash links
-              const baseUrl = url.split('?')[0];
-              return `[${text}](${baseUrl}?utm_source=trendiingz&utm_medium=referral)`;
-            });
-            
-            // For plain text mentions of Unsplash without links
-            attributionText = attributionText.replace(/(\son\s+)Unsplash(?!\])/g, '$1<a href="https://unsplash.com?utm_source=trendiingz&utm_medium=referral" target="_blank" rel="noopener noreferrer" class="text-gray-600 hover:text-indigo-600 transition-colors">Unsplash</a>');
-          }
-          
-          return (
-            <figcaption {...props} className="text-center text-xs text-gray-500 mt-2 italic">
-              <span dangerouslySetInnerHTML={{ __html: attributionText }} />
-            </figcaption>
-          );
-        }
-      }
-      
-      // If no attribution is found, look for "on" patterns like "on Unsplash"
-      if (captionText.includes(' on ')) {
-        const parts = captionText.split(' on ');
-        const lastPart = parts[parts.length - 1];
-        
-        // If the last part looks like a source (e.g., Unsplash, Pexels, etc.)
-        if (/Unsplash|Pexels|Pixabay|Flickr|Getty|Shutterstock/i.test(lastPart)) {
-          // Try to find a name before "on"
-          const namePart = parts[parts.length - 2];
-          if (namePart) {
-            const nameWords = namePart.split(' ');
-            // Get the last few words, which are likely the photographer name
-            const probableName = nameWords.slice(Math.max(0, nameWords.length - 3)).join(' ');
-            
-            // Check if the lastPart contains "Unsplash" and potentially is a markdown link
-            const isUnsplash = /Unsplash/i.test(lastPart);
-            const unsplashMarkdownLink = lastPart.match(/\[Unsplash\]\(([^)]+)\)/i);
-            let formattedLastPart = lastPart;
-            
-            if (isUnsplash) {
-              if (unsplashMarkdownLink) {
-                // Get the URL from the markdown link
-                const unsplashUrl = unsplashMarkdownLink[1];
-                const baseUrl = unsplashUrl.split('?')[0];
-                formattedLastPart = lastPart.replace(
-                  /\[Unsplash\]\(([^)]+)\)/i, 
-                  `[Unsplash](${baseUrl}?utm_source=trendiingz&utm_medium=referral)`
-                );
-              } else {
-                // Just the text "Unsplash" without a link
-                formattedLastPart = lastPart.replace(
-                  /Unsplash/i,
-                  `<a href="https://unsplash.com?utm_source=trendiingz&utm_medium=referral" target="_blank" rel="noopener noreferrer" class="text-gray-600 hover:text-indigo-600 transition-colors">Unsplash</a>`
-                );
-              }
-            }
-            
-            return (
-              <figcaption {...props} className="text-center text-xs text-gray-500 mt-2 italic">
-                Photo by {probableName} on <span dangerouslySetInnerHTML={{ __html: formattedLastPart }} />
-              </figcaption>
-            );
-          }
-          
-          // Just source without photographer
-          const isUnsplash = /Unsplash/i.test(lastPart);
-          let formattedLastPart = lastPart;
-          
-          if (isUnsplash) {
-            formattedLastPart = `<a href="https://unsplash.com?utm_source=trendiingz&utm_medium=referral" target="_blank" rel="noopener noreferrer" class="text-gray-600 hover:text-indigo-600 transition-colors">Unsplash</a>`;
-          }
-          
-          return (
-            <figcaption {...props} className="text-center text-xs text-gray-500 mt-2 italic">
-              Source: <span dangerouslySetInnerHTML={{ __html: formattedLastPart }} />
-            </figcaption>
-          );
-        }
-      }
-      
-      // No attribution found, hide the caption completely
-      return null;
+      // This component might not be needed anymore if img handles captions, 
+      // but keep it for safety or other potential uses.
+      // Remove the complex logic as img component handles attribution now.
+      return (
+        <figcaption {...props} className="text-center text-xs text-gray-500 mt-2 italic">
+          {props.children} 
+        </figcaption>
+      );
     }
   };
 
@@ -1611,34 +1384,76 @@ const ArticleViewer = ({ content }) => {
 
   // Process image captions and add UTM parameters to Unsplash links
   const processImageCaption = (caption) => {
-    if (!caption) return caption;
+    if (!caption) return ''; // Return empty string if no caption
     
-    // Add UTM parameters to links to Unsplash
-    return caption.replace(
-      /(Photo by|Source:|Credit:|Courtesy of) (.*?) on (?:Unsplash|<a href="https:\/\/unsplash\.com.*?"[^>]*>Unsplash<\/a>)/gi,
-      (match, prefix, photographer) => {
-        // If the photographer name already contains a link, extract it
-        let photographerName = photographer;
-        let photographerUrl = '';
-        
-        const linkMatch = photographer.match(/<a href="([^"]+)"[^>]*>([^<]+)<\/a>/);
-        if (linkMatch) {
-          photographerUrl = linkMatch[1];
-          photographerName = linkMatch[2];
-          
-          // Add UTM parameters if it's an Unsplash link
-          if (photographerUrl.includes('unsplash.com')) {
-            const separator = photographerUrl.includes('?') ? '&' : '?';
-            photographerUrl = `${photographerUrl}${separator}utm_source=trendiingz&utm_medium=referral&utm_campaign=image_credit`;
-          }
-          
-          return `${prefix} <a href="${photographerUrl}" target="_blank" rel="noopener noreferrer">${photographerName}</a> on <a href="https://unsplash.com?utm_source=trendiingz&utm_medium=referral&utm_campaign=image_credit" target="_blank" rel="noopener noreferrer">Unsplash</a>`;
-        }
-        
-        // If photographer is not a link, create one to Unsplash with their name in the search
-        return `${prefix} <a href="https://unsplash.com/@${photographerName.toLowerCase().replace(/\s+/g, '')}?utm_source=trendiingz&utm_medium=referral&utm_campaign=image_credit" target="_blank" rel="noopener noreferrer">${photographerName}</a> on <a href="https://unsplash.com?utm_source=trendiingz&utm_medium=referral&utm_campaign=image_credit" target="_blank" rel="noopener noreferrer">Unsplash</a>`;
+    // Only process captions that are identified as attribution
+    const attributionRegex = /^(Photo by|Source:|Image by|Credit:|Courtesy of)/i;
+    if (!attributionRegex.test(caption.trim())) {
+      return ''; // Return empty if it's not an attribution caption
+    }
+
+    // Add UTM parameters to links to Unsplash within the *attribution* text
+    let processedCaption = caption; // Start with the original caption text
+
+    // Helper function to add UTM params
+    const addUtmToUnsplashUrl = (url) => {
+      if (!url || !url.includes('unsplash.com')) return url;
+      const separator = url.includes('?') ? '&' : '?';
+      const utmParams = `utm_source=trendiingz&utm_medium=referral&utm_campaign=image_credit`;
+      // Avoid adding duplicate params
+      if (url.includes('utm_source=trendiingz')) return url; 
+      return `${url}${separator}${utmParams}`;
+    };
+
+    // Process markdown links [Name](url)
+    processedCaption = processedCaption.replace(
+      /\[([^\]]+)\]\((https?:\/\/(?:www\.)?unsplash\.com[^)]*)\)/g,
+      (match, text, url) => {
+        const processedUrl = addUtmToUnsplashUrl(url);
+        return `<a href="${processedUrl}" target="_blank" rel="noopener noreferrer">${text}</a>`;
       }
     );
+
+    // Process plain text "on Unsplash"
+    processedCaption = processedCaption.replace(
+      /( on )(Unsplash)/gi,
+      (match, prefix, source) => {
+        const url = addUtmToUnsplashUrl('https://unsplash.com');
+        return `${prefix}<a href="${url}" target="_blank" rel="noopener noreferrer">${source}</a>`;
+      }
+    );
+    
+    // Process photographer links potentially embedded
+     processedCaption = processedCaption.replace(
+      /(Photo by|Source:|Credit:|Courtesy of)\s+(?:<a href="([^"]+)"[^>]*>)?([^<]+)(?:<\/a>)?(\s+on\s+.*)/i,
+      (match, prefix, existingUrl, name, suffix) => {
+        let photographerLink = '';
+        let url = existingUrl;
+        if (url) {
+           // If URL exists and is Unsplash, add UTM
+           if (url.includes('unsplash.com')) {
+              url = addUtmToUnsplashUrl(url);
+           }
+           photographerLink = `<a href="${url}" target="_blank" rel="noopener noreferrer">${name}</a>`;
+        } else {
+           // If no URL, create a search link on Unsplash
+           const searchUrl = addUtmToUnsplashUrl(`https://unsplash.com/s/photos/${encodeURIComponent(name)}`);
+           // Or potentially a user profile link if we assume it's a username
+           // const profileUrl = addUtmToUnsplashUrl(`https://unsplash.com/@${name.toLowerCase().replace(/\s+/g, '')}`);
+           photographerLink = `<a href="${searchUrl}" target="_blank" rel="noopener noreferrer">${name}</a>`;
+        }
+        
+        // Ensure the suffix (e.g., " on Unsplash") is processed for links too
+        const processedSuffix = suffix.replace(
+             /( on )(Unsplash)/gi, 
+             (sMatch, sPrefix, sSource) => `${sPrefix}<a href="${addUtmToUnsplashUrl('https://unsplash.com')}" target="_blank" rel="noopener noreferrer">${sSource}</a>`
+        );
+
+        return `${prefix} ${photographerLink}${processedSuffix}`;
+      }
+    );
+
+    return processedCaption;
   };
 
   const renderContent = () => {
@@ -1658,175 +1473,17 @@ const ArticleViewer = ({ content }) => {
       
       // Add UTM parameters to all Unsplash links
       processedContent = processedContent.replace(
-        /(https:\/\/unsplash\.com\S*?)(?=[\s\)])/g,
+        /(https:\/\/unsplash\.com\S*?)(?=[\s\)\]])/g, // Adjusted regex to work better with markdown links
         (match) => {
           const separator = match.includes('?') ? '&' : '?';
+          // Avoid adding duplicate params
+          if (match.includes('utm_source=trendiingz')) return match; 
           return `${match}${separator}utm_source=trendiingz&utm_medium=referral&utm_campaign=image_credit`;
         }
       );
       
-      // Process image captions mentioning Unsplash
-      processedContent = processedContent.replace(
-        /\*(Photo by|Source:|Credit:|Courtesy of) (.*?) on Unsplash\*/g,
-        (match, prefix, photographer) => {
-          return `*${processImageCaption(`${prefix} ${photographer} on Unsplash`)}*`;
-        }
-      );
-      
-      // Link plain text mentions of "on Unsplash" with UTM parameters
-      processedContent = processedContent.replace(
-        /(Photo by|Source:|Credit:|Courtesy of) (.*?) on Unsplash/g,
-        (match, prefix, photographer) => {
-          return processImageCaption(`${prefix} ${photographer} on Unsplash`);
-        }
-      );
-      
-      // If we previously had an error but the component is re-rendered,
-      // give it another chance to render correctly
-      if (hasError) {
-        setHasError(false);
-        setErrorDetails(null);
-      }
-      
-      // Helper function to add UTM parameters to Unsplash URLs
-      const addUtmToUnsplashUrl = (url) => {
-        if (!url || !url.includes('unsplash.com')) return url;
-        
-        const [baseUrl, existingQuery] = url.split('?');
-        const separator = existingQuery ? '&' : '?';
-        const utmParams = `utm_source=trendiingz&utm_medium=referral`;
-        return `${baseUrl}${separator}${utmParams}`;
-      };
-      
-      // Helper function to process Unsplash links in text
-      const processUnsplashLinks = (text) => {
-        if (!text) return text;
-        
-        // Process markdown links to Unsplash
-        return text.replace(/\[([^\]]+)\]\((https?:\/\/(?:www\.)?unsplash\.com[^)]*)\)/g, (match, linkText, url) => {
-          const processedUrl = addUtmToUnsplashUrl(url);
-          return `[${linkText}](${processedUrl})`;
-        });
-      };
-      
-      // Preprocess the content to handle various formatting elements
-      processedContent = processedContent.replace(/!\[(.*?)\]\((https?:\/\/(?:www\.)?unsplash\.com[^)]*)\)/g, 
-        (match, alt, url) => {
-          const processedUrl = addUtmToUnsplashUrl(url);
-          return `![${alt}](${processedUrl})`;
-      });
-      
-      // Process all captions that mention Unsplash to add UTM parameters
-      processedContent = processedContent.replace(/\*(Photo by.*?on Unsplash.*?)\*/g, 
-        (match, caption) => {
-          const processedCaption = processUnsplashLinks(caption);
-          return `*${processedCaption}*`;
-      });
-      
-      // Process plain text mentions of "on Unsplash" that aren't already linked
-      processedContent = processedContent.replace(/(\son\s+)Unsplash(?!\])/g, 
-        (match, prefix) => {
-          return `${prefix}[Unsplash](https://unsplash.com?utm_source=trendiingz&utm_medium=referral)`;
-      });
-      
-      // 1. Process emoji lists
-      // Match markdown lists with specific emoji prefixes
-      const listItemPrefix = /^(\*|\-)\s+/;
-      
-      // Helper function to determine the correct emoji class
-      const getEmojiClass = (emoji) => {
-        const emojiMap = {
-          '🔑': 'key',
-          '⚡': 'sparkles',
-          '✅': 'check',
-          '⚠️': 'alert',
-          '💡': 'idea',
-          '⭐': 'star',
-        };
-        // Expanded emoji list with visual mapping
-        const emojiCategories = {
-          '📱': 'tech',
-          '🚀': 'speed',
-          '🧠': 'mind',
-          '🔍': 'search',
-          '💻': 'computer',
-          '📊': 'data',
-          '🔮': 'future',
-          '🌟': 'star',
-          '🎯': 'target',
-          '📈': 'growth'
-        };
-        
-        return emojiMap[emoji] || emojiCategories[emoji] || 'key';
-      };
-      
-      // Process lines one by one instead of using regex with Unicode
-      const lines = processedContent.split('\n');
-      let inEmojiList = false;
-      let currentEmojiType = null;
-      let listStartIndex = -1;
-      let listEndIndex = -1;
-      
-      // First pass: identify emoji lists
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        const prefixMatch = line.match(listItemPrefix);
-        
-        // Check if this line is a list item with an emoji
-        if (prefixMatch) {
-          // Check if the line contains an emoji after the prefix
-          const afterPrefix = line.substring(prefixMatch[0].length);
-          // Look for common emojis used in lists
-          const emojis = ['🔑', '⚡', '✅', '⚠️', '💡', '⭐', '📱', '🚀', '🧠', '🔍', '💻', '📊', '🔮', '🌟', '🎯', '📈'];
-          
-          // Find if any emoji is present at the start of the text after the prefix
-          const emojiMatch = emojis.find(emoji => afterPrefix.trimStart().startsWith(emoji));
-          
-          if (emojiMatch) {
-            // We found an emoji list item
-            if (!inEmojiList) {
-              // Start a new emoji list
-              inEmojiList = true;
-              currentEmojiType = emojiMatch;
-              listStartIndex = i;
-            } else if (currentEmojiType !== emojiMatch) {
-              // End previous list and start a new one with different emoji
-              // Process the previous list
-              const emojiClass = getEmojiClass(currentEmojiType);
-              // Wrap lines with the emoji class
-              lines[listStartIndex] = `{:.emoji-${emojiClass}}\n${lines[listStartIndex]}`;
-              
-              // Start a new list
-              currentEmojiType = emojiMatch;
-              listStartIndex = i;
-            }
-            // Update the end index of the current list
-            listEndIndex = i;
-          } else if (inEmojiList) {
-            // A list item without emoji after an emoji list - end the emoji list
-            const emojiClass = getEmojiClass(currentEmojiType);
-            lines[listStartIndex] = `{:.emoji-${emojiClass}}\n${lines[listStartIndex]}`;
-            inEmojiList = false;
-          }
-        } else if (inEmojiList && line.trim() === '') {
-          // Empty line after emoji list - end the list
-          const emojiClass = getEmojiClass(currentEmojiType);
-          lines[listStartIndex] = `{:.emoji-${emojiClass}}\n${lines[listStartIndex]}`;
-          inEmojiList = false;
-        }
-      }
-      
-      // Handle case where emoji list is at the end of the content
-      if (inEmojiList) {
-        const emojiClass = getEmojiClass(currentEmojiType);
-        lines[listStartIndex] = `{:.emoji-${emojiClass}}\n${lines[listStartIndex]}`;
-      }
-      
-      // Reassemble the content
-      processedContent = lines.join('\n');
-      
       // 2. Process expert tips and callouts with improved detection
-      const expertTipRegex = /(?:^|\n|>\s*)(?:\*\*)?(EXPERT\s+(?:TIP|INSIGHT)|PRO\s+TIP|DID\s+YOU\s+KNOW\?|EXPERT TIP)(?:\*\*)?:?\s*(["']?.*?["']?)(?=\n\n|\n[^>]|$)/gis;
+      const expertTipRegex = /(?:^|\n|\>\s*)(?:\*\*)?(EXPERT\s+(?:TIP|INSIGHT)|PRO\s+TIP|DID\s+YOU\s+KNOW\?|EXPERT TIP)(?:\*\*)?:?\s*(?:"|')?(.*?)(?:"|')?(?=\n\n|\n[^>]|$)/gis;
       processedContent = processedContent.replace(expertTipRegex, (match, label, content) => {
         // If content is undefined, it means we matched the simpler pattern
         // and need to adjust our variables
