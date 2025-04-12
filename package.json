@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "next dev",
     "prebuild": "node scripts/fix-netlify-build.js",
-    "build": "npm install --production=false && next build && cd netlify/functions && npm install && cd ../.. && mkdir -p netlify/functions/content && cp -r content/articles netlify/functions/content/",
+    "build": "npm install --production=false && next build && mkdir -p netlify/functions/content && cp -r content/articles netlify/functions/content/",
     "start": "next start",
     "test:functions": "cd netlify/functions && npm install && node test-posts-function.js"
   },
