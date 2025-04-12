@@ -681,10 +681,13 @@ export default function Post({ frontMatter, content, slug, relatedArticles: rawR
             return prevProgress + (progress - prevProgress) * 0.15;
           });
 
-          // Show/hide TOC based on scroll position and progress
+          // Show/hide TOC based on scroll position and visibility of related articles
           const heroHeight = window.innerHeight * 0.7; // 70vh - hero section height
-          // Hide TOC completely when progress reaches 100%
-          setShowDesktopToc(window.scrollY > heroHeight && progress < 100);
+          // Determine if the related articles section is visible enough to hide the TOC
+          const relatedSectionInView = relatedArticlesSection ? relatedArticlesSection.getBoundingClientRect().top < window.innerHeight * 0.85 : false; // Hide when 85% of viewport is below section top
+          
+          // Hide TOC if scrolled past hero OR if related articles section is in view
+          setShowDesktopToc(window.scrollY > heroHeight && !relatedSectionInView);
 
           if (progress > 25 && !showShareButtons && progress < 100) {
             setShowShareButtons(true);
@@ -1449,7 +1452,7 @@ export default function Post({ frontMatter, content, slug, relatedArticles: rawR
 
           {/* Desktop Table of Contents - Optimize transitions */}
           {tableOfContents.length > 1 && (
-            <div className={`hidden lg:block fixed right-8 z-10 transition-all duration-300 ease-out ${
+            <div className={`hidden lg:block fixed lg:right-16 xl:right-32 z-10 transition-all duration-300 ease-out ${
               showDesktopToc ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'
             }`} style={{ top: 'max(80px, 15vh)' }}>
               <div className="w-64 bg-white/95 backdrop-blur-md rounded-xl shadow-lg border border-gray-100 transition-all duration-300 will-change-transform hover:shadow-xl">
