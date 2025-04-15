@@ -31,7 +31,7 @@ export default function ShimmerImage({
     priority,
     quality,
     className: `${className} ${isLoaded ? 'opacity-100' : 'opacity-0'} transition-opacity duration-300`,
-    onLoadingComplete: () => setIsLoaded(true),
+    onLoad: () => setIsLoaded(true),
     sizes,
     style: { ...style, objectFit: objectFit }
   };

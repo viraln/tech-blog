@@ -1203,17 +1203,20 @@ const ArticleViewer = ({ content }) => {
         const emojiMatch = content[0].match(/^([\p{Emoji}])\s+(.*)/u);
         if (emojiMatch) {
           const [_, emoji, text] = emojiMatch;
-          content[0] = text;
+          // Create a new array with the modified first element
+          const newContent = [...content];
+          newContent[0] = text;
           return (
             <li className="emoji-list-item mb-3 pl-2">
               <span className="emoji-bullet mr-2 text-lg inline-block align-middle">{emoji}</span>
-              <span>{content}</span>
+              {/* Render using the new array */}
+              <span>{newContent}</span>
             </li>
           );
         }
       }
       
-      // Regular list item
+      // Regular list item - Ensure original children are passed
       return <li className="mb-2 pl-1" {...props} />;
     },
     a: (props) => {
