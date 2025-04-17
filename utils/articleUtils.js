@@ -22,6 +22,16 @@ export { articleCache, cachedArticlesList };
 // Add a slug-to-filename mapping for fast lookup
 const slugToFilenameMap = new Map();
 
+
+/**
+ * Creates a filesystem-safe timestamp string for filenames
+ * @returns {string} - Sanitized timestamp string
+ */
+export function createSafeTimestamp() {
+  // Replace colons with underscores to make it filesystem-friendly
+  return new Date().toISOString().replace(/:/g, '_');
+}
+
 export function getRelativeTime(date) {
   const now = new Date();
   const diff = now.getTime() - date.getTime();
