@@ -608,145 +608,59 @@ export async function getAllArticles(options = {}) {
 }
 
 /**
- * Preloads article data to ensure it's available during navigation
- * Now with pagination to improve performance
+ * Preloads the article cache by reading frontmatter from a subset of files
  */
 export async function preloadArticleCache() {
+  if (isInitialCacheLoaded) return;
+
+  console.log('Preloading article cache...');
+  const articlesDir = path.join(process.cwd(), 'content/articles');
+
   try {
-    // If we've already loaded the initial cache, return immediately
-    if (isInitialCacheLoaded) {
-      return;
-    }
-    
-    console.time('preloadCache');
-    let files = fs.readdirSync(path.join(process.cwd(), 'content/articles'));
-    
-    // Sort files by their timestamp in filename (newer files first)
-    files.sort((a, b) => {
-      // Extract timestamp from filename if present
-      const timestampRegexA = a.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)/);
-      const timestampRegexB = b.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)/);
-      
-      const timestampA = timestampRegexA ? timestampRegexA[1] : null;
-      const timestampB = timestampRegexB ? timestampRegexB[1] : null;
-      
-      // If both have timestamps, compare them (reverse order for newest first)
-      if (timestampA && timestampB) {
-        return timestampB.localeCompare(timestampA);
-      }
-      
-      // If only one has a timestamp, prioritize that one
-      if (timestampA) return -1; // A has timestamp, comes first
-      if (timestampB) return 1;  // B has timestamp, comes first
-      
-      // Otherwise just sort by filename
-      return b.localeCompare(a);
-    });
-    
-    // Store the list of files for later pagination - already sorted by newest first
-    cachedArticlesList = files;
-    
-    // Only preload a small initial batch (first page)
-    const initialBatch = files.slice(0, ARTICLES_PER_PAGE);
-    
-    console.log(`Preloading initial batch of ${initialBatch.length} articles out of ${files.length}...`);
-    
-    for (const filename of initialBatch) {
+    const files = fs.readdirSync(articlesDir);
+    // Sort files by name, assuming timestamp-based filenames (newest first)
+    cachedArticlesList = files.sort().reverse();
+
+    // Load the first N articles to populate the initial cache
+    const initialLoadCount = Math.min(cachedArticlesList.length, 200); // Load first 200
+    const filesToLoad = cachedArticlesList.slice(0, initialLoadCount);
+
+    console.log(`Found ${cachedArticlesList.length} total files. Preloading frontmatter for ${filesToLoad.length}...`);
+
+    for (const filename of filesToLoad) {
       try {
-        // Skip directories
-        const filePath = path.join(process.cwd(), 'content/articles', filename);
-        const stats = fs.statSync(filePath);
-        if (!stats.isFile()) continue;
-        
-        // Only load if not already cached
-        if (!articleCache.has(filename)) {
-          const fileContents = fs.readFileSync(filePath, 'utf8');
-          const { data } = matter(fileContents);
-          
-          // If no date is present in frontmatter, try to extract from filename
-          if (!data.date) {
-            const timestampRegex = filename.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)/);
-            if (timestampRegex) {
-              data.date = timestampRegex[1];
-            }
-          }
-          
-          articleCache.set(filename, data);
-          
-          // Build slug-to-filename index for faster lookups
-          if (data.slug) {
-            slugToFilenameMap.set(data.slug, filename);
-          }
-          // Also index by filename without extension as fallback
-          const filenameSlug = filename.replace(/\.md$/, '');
-          // Check for timestamp prefix pattern and extract slug
-          const timeStampMatch = filenameSlug.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z-(.*?)$/);
-          if (timeStampMatch && timeStampMatch[1]) {
-            slugToFilenameMap.set(timeStampMatch[1], filename);
-          } else {
-            slugToFilenameMap.set(filenameSlug, filename);
-          }
+        const filePath = path.join(articlesDir, filename);
+        if (!fs.statSync(filePath).isFile() || !filename.endsWith('.md')) {
+          continue;
         }
+
+        const fileContents = fs.readFileSync(filePath, 'utf8');
+        const { data } = matter(fileContents);
+
+        // Cache the frontmatter keyed by filename
+        articleCache.set(filename, data);
+
+        // *** NEW: Populate the slug-to-filename map ***
+        if (data.slug) {
+          if (slugToFilenameMap.has(data.slug) && slugToFilenameMap.get(data.slug) !== filename) {
+            console.warn(`Duplicate slug '${data.slug}' found in files: ${slugToFilenameMap.get(data.slug)} and ${filename}. Using the latter.`);
+          }
+          slugToFilenameMap.set(data.slug, filename);
+        } else {
+          console.warn(`Article ${filename} is missing a 'slug' in its frontmatter.`);
+        }
+
       } catch (error) {
-        console.error(`Error preloading article ${filename}:`, error);
+        console.error(`Error processing file ${filename} during cache preload:`, error);
       }
     }
-    
-    // Also preload some recently created or popular articles - these should already be at the top of our sorted list
-    try {
-      // We're already sorted by newest first, so we just need to get articles with timestamp-prefixed filenames
-      const recentArticleFiles = cachedArticlesList
-        .filter(file => /^\d{4}-\d{2}-\d{2}T/.test(file))
-        .slice(0, 50); // Ensure we at least have 50 recent ones
-        
-      console.log(`Preloading ${recentArticleFiles.length} additional recent articles...`);
-      
-      for (const filename of recentArticleFiles) {
-        // Skip if already loaded
-        if (articleCache.has(filename)) continue;
-        
-        try {
-          const filePath = path.join(process.cwd(), 'content/articles', filename);
-          if (!fs.statSync(filePath).isFile()) continue;
-          
-          const fileContents = fs.readFileSync(filePath, 'utf8');
-          const { data } = matter(fileContents);
-          
-          // If no date is present in frontmatter, try to extract from filename
-          if (!data.date) {
-            const timestampRegex = filename.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)/);
-            if (timestampRegex) {
-              data.date = timestampRegex[1];
-            }
-          }
-          
-          articleCache.set(filename, data);
-          
-          // Add to slug mapping
-          if (data.slug) {
-            slugToFilenameMap.set(data.slug, filename);
-          }
-          
-          // Extract slug from filename
-          const filenameSlug = filename.replace(/\.md$/, '');
-          const timeStampMatch = filenameSlug.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z-(.*?)$/);
-          if (timeStampMatch && timeStampMatch[1]) {
-            slugToFilenameMap.set(timeStampMatch[1], filename);
-          }
-        } catch (error) {
-          // Ignore errors
-        }
-      }
-    } catch (error) {
-      console.error('Error preloading recent articles:', error);
-    }
-    
+
     isInitialCacheLoaded = true;
-    console.log(`Preloaded initial batch of ${articleCache.size} articles into cache`);
-    console.log(`Built slug mapping with ${slugToFilenameMap.size} entries`);
-    console.timeEnd('preloadCache');
+    console.log(`Initial article cache loaded with ${articleCache.size} items. Slug map size: ${slugToFilenameMap.size}`);
+
   } catch (error) {
-    console.error('Error preloading article cache:', error);
+    console.error('Error reading articles directory for cache preload:', error);
+    cachedArticlesList = []; // Ensure it's an empty array on error
   }
 }
 
@@ -812,191 +726,57 @@ export async function loadArticleCachePage(page = 1) {
 }
 
 /**
- * Gets an article by slug
+ * Gets an article by slug using the preloaded cache and slug map
  * @param {string} slug - Article slug
  * @returns {Object|null} - Article data or null if not found
  */
 export async function getArticleBySlug(slug) {
   try {
-    // Performance optimization #1: Direct lookup from slug map
+    // Ensure cache is loaded if it hasn't been already
+    if (!isInitialCacheLoaded) {
+      await preloadArticleCache();
+    }
+
+    // *** Primary Method: Use the slug-to-filename map ***
     if (slugToFilenameMap.has(slug)) {
       const targetFilename = slugToFilenameMap.get(slug);
       try {
         const filePath = path.join(process.cwd(), 'content/articles', targetFilename);
         const fileContents = fs.readFileSync(filePath, 'utf8');
         const { data, content } = matter(fileContents);
-        
+
+        // Use frontmatter from cache if available, otherwise from file read
+        const frontMatter = articleCache.get(targetFilename) || data;
+
         return {
-          frontMatter: data,
+          frontMatter,
           content,
-          slug: data.slug || slug
+          slug: frontMatter.slug || slug // Ensure slug from frontmatter is prioritized
         };
-      } catch (error) {
-        // If file access fails, remove from map and continue with other methods
+      } catch (fileError) {
+        console.error(`Error reading file ${targetFilename} for slug ${slug}:`, fileError);
+        // Remove invalid entry from map
         slugToFilenameMap.delete(slug);
-        console.log(`File lookup failed for cached slug ${slug}, falling back to other methods`);
+        // Consider falling back? For now, let's return null if the mapped file is bad.
+        return null;
       }
+    } else {
+      // Fallback: If slug not in map (e.g., article is beyond initial preload)
+      // We might need to scan more files or implement on-demand loading here.
+      // For now, this indicates the article wasn't found in the preloaded set.
+      console.warn(`Slug '${slug}' not found in preloaded slug map. Consider increasing initialLoadCount in preloadArticleCache.`);
+
+      // Optional: Implement a deeper scan here if necessary, but it will be slow.
+      // Example (slow): Iterate through all files not in cache
+      // for (const filename of cachedArticlesList) {
+      //   if (!articleCache.has(filename)) { ... read file, check slug ... }
+      // }
+
+      return null;
     }
-    
-    // Performance optimization #2: Check existing cache by examining frontMatter slugs
-    // If we already know which file contains this slug, use it directly
-    let targetFilename = null;
-    for (const [filename, data] of articleCache.entries()) {
-      if (data.slug === slug) {
-        targetFilename = filename;
-        // Add to slug map for future lookups
-        slugToFilenameMap.set(slug, filename);
-        break;
-      }
-    }
-    
-    // If we found the file in our cache, read it directly
-    if (targetFilename) {
-      const filePath = path.join(process.cwd(), 'content/articles', targetFilename);
-      const fileContents = fs.readFileSync(filePath, 'utf8');
-      const { data, content } = matter(fileContents);
-      
-      return {
-        frontMatter: data,
-        content,
-        slug: data.slug || targetFilename.replace(/\.md$/, '')
-      };
-    }
-    
-    // Performance optimization #3: Try direct filename match without reading content
-    const directFilePath = path.join(process.cwd(), 'content/articles', `${slug}.md`);
-    if (fs.existsSync(directFilePath)) {
-      const fileContents = fs.readFileSync(directFilePath, 'utf8');
-      const { data, content } = matter(fileContents);
-      
-      // Add to cache and slug map for future use
-      articleCache.set(`${slug}.md`, data);
-      slugToFilenameMap.set(slug, `${slug}.md`);
-      
-      return {
-        frontMatter: data,
-        content,
-        slug: data.slug || slug
-      };
-    }
-    
-    // Third attempt: Look for timestamp-prefixed files that end with the slug
-    if (cachedArticlesList === null) {
-      // Initialize the list if needed
-      cachedArticlesList = fs.readdirSync(path.join(process.cwd(), 'content/articles'));
-    }
-    
-    // Optimization #4: Try pattern matching on filenames before reading contents
-    const potentialMatch = cachedArticlesList.find(file => {
-      // Try several patterns:
-      // 1. File ends with slug.md (for timestamp prefixed files)
-      if (file.endsWith(`-${slug}.md`)) return true;
-      
-      // 2. File has slug embedded (for timestamp plus slug files)
-      const slugPattern = new RegExp(`-${slug}(\\.md|\\.mdx)$`);
-      return slugPattern.test(file);
-    });
-    
-    if (potentialMatch) {
-      const filePath = path.join(process.cwd(), 'content/articles', potentialMatch);
-      const fileContents = fs.readFileSync(filePath, 'utf8');
-      const { data, content } = matter(fileContents);
-      
-      // Add to cache and slug map for future use
-      articleCache.set(potentialMatch, data);
-      slugToFilenameMap.set(slug, potentialMatch);
-      if (data.slug) {
-        slugToFilenameMap.set(data.slug, potentialMatch);
-      }
-      
-      return {
-        frontMatter: data,
-        content,
-        slug: data.slug || slug
-      };
-    }
-    
-    // Optimization #5: Smart search by sorting files by likelihood 
-    // Check files from newest first (assuming timestamp prefixed filenames)
-    // and limit to only 100 files for even faster performance
-    let filesToCheck = [];
-    if (cachedArticlesList.length > 0) {
-      // Try to find files that might contain the slug in the name first
-      const potentialFiles = cachedArticlesList.filter(file => 
-        file.includes(slug) || 
-        file.includes(slug.replace(/-/g, '')) ||
-        file.includes(slug.replace(/-/g, ' '))
-      );
-      
-      if (potentialFiles.length > 0) {
-        // If we have potential matches, check those first
-        filesToCheck = potentialFiles;
-      } else {
-        // Otherwise sort by timestamp and check newest 100
-        const sortedFiles = [...cachedArticlesList].sort((a, b) => {
-          try {
-            // Try to extract dates from filenames for sorting (newest first)
-            const dateA = a.match(/^\d{4}-\d{2}-\d{2}/);
-            const dateB = b.match(/^\d{4}-\d{2}-\d{2}/);
-            
-            if (dateA && dateB) {
-              return dateB[0].localeCompare(dateA[0]);
-            }
-            return 0;
-          } catch (error) {
-            return 0;
-          }
-        });
-        
-        filesToCheck = sortedFiles.slice(0, 100);
-      }
-    }
-    
-    // Last resort: Check a limited number of files
-    for (const filename of filesToCheck) {
-      try {
-        // Skip directories
-        const filePath = path.join(process.cwd(), 'content/articles', filename);
-        const stats = fs.statSync(filePath);
-        if (!stats.isFile()) continue;
-        
-        // Use cached data if available
-        let frontMatter;
-        if (articleCache.has(filename)) {
-          frontMatter = articleCache.get(filename);
-        } else {
-          const fileContents = fs.readFileSync(filePath, 'utf8');
-          const { data } = matter(fileContents);
-          frontMatter = data;
-          // Store in cache for future use
-          articleCache.set(filename, frontMatter);
-        }
-        
-        if (frontMatter.slug === slug || filename.replace(/\.md$/, '') === slug) {
-          const fileContents = fs.readFileSync(filePath, 'utf8');
-          const { content } = matter(fileContents);
-          
-          // Add to slug map for future lookups
-          slugToFilenameMap.set(slug, filename);
-          if (frontMatter.slug) {
-            slugToFilenameMap.set(frontMatter.slug, filename);
-          }
-          
-          return {
-            frontMatter,
-            content,
-            slug: frontMatter.slug || filename.replace(/\.md$/, '')
-          };
-        }
-      } catch (error) {
-        console.error(`Error processing file ${filename} for article by slug:`, error);
-      }
-    }
-    
-    console.error(`Article not found for slug: ${slug}`);
-    return null;
+
   } catch (error) {
-    console.error('Error in getArticleBySlug:', error);
+    console.error(`Error in getArticleBySlug for slug ${slug}:`, error);
     return null;
   }
 } 
