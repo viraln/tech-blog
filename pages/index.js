@@ -1986,7 +1986,17 @@ export async function getStaticProps() {
       slug: post.slug,
       title: post.title,
       excerpt: post.excerpt,
-      date: post.date && !isNaN(new Date(post.date)) ? new Date(post.date).toISOString() : null, // Sanitize date
+      // Use IIFE for robust date sanitization
+      date: (() => {
+        if (!post.date) return null;
+        try {
+          const dateObj = new Date(post.date);
+          return !isNaN(dateObj.getTime()) ? dateObj.toISOString() : null;
+        } catch (e) { 
+          console.warn(`[getStaticProps index] Error processing date: ${post.date}`, e);
+          return null; 
+        }
+      })(),
       image: post.image,
       readingTime: post.readingTime,
       category: post.category,

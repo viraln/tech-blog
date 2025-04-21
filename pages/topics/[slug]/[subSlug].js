@@ -545,7 +545,16 @@ export async function getStaticProps({ params }) {
           slug: post.slug,
           title: post.title,
           excerpt: post.excerpt,
-          date: post.date && !isNaN(new Date(post.date)) ? new Date(post.date).toISOString() : null,
+          date: (() => {
+            if (!post.date) return null;
+            try {
+              const dateObj = new Date(post.date);
+              return !isNaN(dateObj.getTime()) ? dateObj.toISOString() : null;
+            } catch (e) {
+              console.warn(`[getStaticProps subtopic] Error processing date: ${post.date}`, e);
+              return null;
+            }
+          })(),
           image: post.image || 'https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&w=800&q=60',
           readingTime: post.readingTime || 3,
           category: post.category || 'General',

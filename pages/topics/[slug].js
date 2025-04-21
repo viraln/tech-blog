@@ -2299,7 +2299,18 @@ export async function getStaticProps({ params }) {
     // Ensure all article dates are serializable (null if invalid/undefined)
     const serializableArticlesData = articlesData.map(article => ({
       ...article,
-      date: article.date && !isNaN(new Date(article.date)) ? new Date(article.date).toISOString() : null
+      // Use IIFE for robust date sanitization
+      date: (() => {
+        if (!article.date) return null;
+        try {
+          const dateObj = new Date(article.date);
+          // Check validity before converting
+          return !isNaN(dateObj.getTime()) ? dateObj.toISOString() : null;
+        } catch (e) {
+          console.warn(`[getStaticProps topic slug] Error processing date: ${article.date}`, e);
+          return null;
+        }
+      })()
     }));
     
     return {

@@ -2016,12 +2016,28 @@ export async function getStaticProps({ params: { slug } }) {
     const wordCount = rawContent.split(/\s+/g).length;
     const readingTime = Math.ceil(wordCount / 200); // 200 words per minute
     
+    // --- START: Robust Date Processing ---
+    let processedDate = null;
+    if (frontMatter.date) {
+      try {
+        const dateObj = new Date(frontMatter.date);
+        // Check if the date object is valid before calling toISOString
+        if (!isNaN(dateObj.getTime())) {
+          processedDate = dateObj.toISOString();
+        } else {
+          console.warn(`[getStaticProps] Invalid date value encountered in ${slug}:`, frontMatter.date);
+        }
+      } catch (e) {
+        console.error(`[getStaticProps] Error processing date for ${slug}:`, frontMatter.date, e);
+        processedDate = null; // Ensure it's null on error
+      }
+    }
+    // --- END: Robust Date Processing ---
+
     // Ensure all necessary SEO fields are present
     const serializedFrontMatter = {
       ...frontMatter,
-      date: frontMatter.date instanceof Date 
-        ? frontMatter.date.toISOString() 
-        : frontMatter.date,
+      date: processedDate, // Use the safely processed date
       wordCount,
       readingTime: frontMatter.readingTime || readingTime,
       excerpt: frontMatter.excerpt || rawContent.slice(0, 160).trim() + '...',
