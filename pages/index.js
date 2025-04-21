@@ -1986,7 +1986,7 @@ export async function getStaticProps() {
       slug: post.slug,
       title: post.title,
       excerpt: post.excerpt,
-      date: post.date,
+      date: post.date && !isNaN(new Date(post.date)) ? new Date(post.date).toISOString() : null, // Sanitize date
       image: post.image,
       readingTime: post.readingTime,
       category: post.category,

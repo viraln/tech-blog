@@ -2296,10 +2296,16 @@ export async function getStaticProps({ params }) {
     // Get related topics from the articles
     const relatedTopics = getRelatedTopicsFromArticles(articlesData, slug);
     
-      return {
-        props: {
+    // Ensure all article dates are serializable (null if invalid/undefined)
+    const serializableArticlesData = articlesData.map(article => ({
+      ...article,
+      date: article.date && !isNaN(new Date(article.date)) ? new Date(article.date).toISOString() : null
+    }));
+    
+    return {
+      props: {
         topicMetadata,
-        articlesData,
+        articlesData: serializableArticlesData, // Pass sanitized data
         relatedTopics,
         serverDataError: false
       },
