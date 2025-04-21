@@ -2046,7 +2046,8 @@ export async function getStaticProps({ params: { slug } }) {
       // Ensure categories are properly handled
       categories: frontMatter.categories || [],
       image: frontMatter.image || 'https://Trendiingz.com/default-og-image.jpg',
-      imageAlt: frontMatter.imageAlt || frontMatter.title,
+      // Ensure imageAlt defaults to empty string if both imageAlt and title are missing
+      imageAlt: frontMatter.imageAlt || frontMatter.title || '',
       imageCredit: frontMatter.imageCredit || '',
       url: `https://Trendiingz.com/posts/${slug}`,
       locale: 'en_US'
