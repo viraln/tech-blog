@@ -9,6 +9,7 @@ import TopicNav from '../../../components/home/TopicNav'
 
 // Get article data
 import { getAllPosts } from '../../../utils/mdx'
+import { getAllArticles, calculateArticleRelevance } from '../../../utils/articleUtils'
 
 export default function SubTopicPage({ subtopic, mainTopic, articlesData, relatedTopics }) {
   const router = useRouter()

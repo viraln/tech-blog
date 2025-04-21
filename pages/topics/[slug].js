@@ -12,6 +12,7 @@ import dynamic from 'next/dynamic'
 
 // Get article data
 import { getAllPosts } from '../../utils/mdx'
+import { getAllArticles, calculateArticleRelevance } from '../../utils/articleUtils'
 
 // Define our canonical topic mapping for standardization
 const topicMap = {
