@@ -2322,152 +2322,84 @@ export async function getStaticProps({ params }) {
   }
 }
 
-// Generate static paths for common topics and dynamically discovered topics
+// Generate static paths based on topics with actual content
 export async function getStaticPaths() {
-  // First, collect all defined topic slugs from the topicMap
-  const predefinedSlugs = new Set();
-  
-  // Add common predefined topics
-  const commonTopics = [
-    // Core topics
-    'tech', 'ai', 'science', 'business', 'innovation', 'gaming', 'climate', 'lifestyle',
-    'featured', 'trending', 'latest', 'politics', 'food', 'entertainment',
-    
-    // Academic/Educational topics
-    'history', 'art', 'literature', 'philosophy', 'psychology', 'education',
-    'medicine', 'health', 'biology', 'physics', 'chemistry', 'mathematics',
-    
-    // Technology subtopics
-    'web-development', 'mobile', 'cloud-computing', 'cybersecurity', 'data-science',
-    'machine-learning', 'blockchain', 'cryptocurrency', 'virtual-reality', 
-    'augmented-reality', 'internet-of-things', 'robotics', 'software',
-    
-    // Science subtopics
-    'astronomy', 'quantum', 'genetics', 'neuroscience', 'ecology', 'environment',
-    
-    // Cultural/Social topics
-    'travel', 'music', 'movies', 'fashion', 'sports', 'books', 'celebrities',
-    'social-media', 'design', 'architecture', 'photography',
-    
-    // Business subtopics
-    'finance', 'investing', 'entrepreneurship', 'startups', 'marketing',
-    'e-commerce', 'real-estate', 'careers', 'leadership',
-    
-    // Specialized topics
-    'adaptive', 'engineering', 'bio-inspired-design', 'soft-robotics',
-    'sustainability', 'space', 'nutrition', 'fitness', 'mental-health'
-  ];
-  
-  // Add all common topics to our set
-  commonTopics.forEach(topic => predefinedSlugs.add(topic));
-  
-  // Loop through all categories in the topicMap to add more topics
-  for (const category in topicMap) {
-    // Add the category itself as a potential slug
-    predefinedSlugs.add(category);
-    
-    const topic = topicMap[category];
-    // If this is a topic object with an ID, add it
-    if (topic && topic.id) {
-      predefinedSlugs.add(topic.id);
-    }
-  }
-  
-  // Now, try to get all posts to extract additional topic slugs from actual content
+  const MIN_ARTICLES_PER_TOPIC = 1; // Minimum articles required to generate a topic page
+  const allTopicSlugs = new Set();
+
   try {
-    const allPostsResponse = await getAllPosts();
-    const allPosts = Array.isArray(allPostsResponse) ? allPostsResponse : (allPostsResponse.posts || []);
-    
-    // Extract all topic slugs from posts
-    const dynamicSlugs = new Set();
-    
+    // Fetch all articles (or at least their frontmatter)
+    // Note: Ensure getAllArticles fetches efficiently, maybe only frontmatter
+    const allPostsData = await getAllArticles({ paginate: false }); // Assuming this returns an array of articles
+    const allPosts = Array.isArray(allPostsData) ? allPostsData : [];
+
+    console.log(`[getStaticPaths] Found ${allPosts.length} total posts.`);
+
+    const topicCounts = {};
+
+    // Iterate over posts to count topic occurrences
     allPosts.forEach(post => {
-      // Process topics
-      if (post.topics && Array.isArray(post.topics)) {
-        post.topics.forEach(topic => {
-          const topicSlug = typeof topic === 'string' 
-            ? normalizeString(topic).original.replace(/\s+/g, '-').toLowerCase()
-            : (topic.id || topic.slug);
-            
-          if (topicSlug) {
-            dynamicSlugs.add(topicSlug);
-          }
-        });
-      }
-      
-      // Process categories
-        if (post.categories && Array.isArray(post.categories)) {
-        post.categories.forEach(category => {
-          const categorySlug = typeof category === 'string'
-            ? normalizeString(category).original.replace(/\s+/g, '-').toLowerCase()
-            : (category.id || category.slug);
-            
-          if (categorySlug) {
-            dynamicSlugs.add(categorySlug);
-          }
-        });
-      }
-      
-      // Process main category
+      const topics = [];
+      // Add primary category
       if (post.category) {
-        const categorySlug = typeof post.category === 'string'
-          ? normalizeString(post.category).original.replace(/\s+/g, '-').toLowerCase()
-          : (post.category.id || post.category.slug);
-          
-        if (categorySlug) {
-          dynamicSlugs.add(categorySlug);
-        }
+        topics.push(post.category);
       }
-      
-      // Process tags (lower priority, but still relevant)
-      if (post.tags && Array.isArray(post.tags)) {
-        post.tags.forEach(tag => {
-          const tagSlug = typeof tag === 'string'
-            ? normalizeString(tag).original.replace(/\s+/g, '-').toLowerCase()
-            : (tag.id || tag.slug);
-            
-          if (tagSlug && tagSlug.length > 3) { // Only include meaningful tags
-            dynamicSlugs.add(tagSlug);
+      // Add items from categories array
+      if (Array.isArray(post.categories)) {
+        post.categories.forEach(cat => topics.push(typeof cat === 'string' ? cat : cat.name));
+      }
+      // Add items from topics array
+      if (Array.isArray(post.topics)) {
+        post.topics.forEach(topic => topics.push(typeof topic === 'string' ? topic : topic.name));
+      }
+      // Add items from tags array
+      if (Array.isArray(post.tags)) {
+        post.tags.forEach(tag => topics.push(typeof tag === 'string' ? tag : tag.name));
+      }
+
+      // Process and count each topic/category/tag
+      topics.forEach(rawTopic => {
+        if (rawTopic && typeof rawTopic === 'string') {
+          const slug = rawTopic.toLowerCase().trim().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+          if (slug) {
+            topicCounts[slug] = (topicCounts[slug] || 0) + 1;
           }
-        });
-      }
+        }
+      });
     });
-    
-    console.log(`Found ${predefinedSlugs.size} predefined topic slugs and ${dynamicSlugs.size} dynamic topic slugs`);
-    
-    // Combine predefined and dynamic slugs, while ensuring common topics are included
-    const finalSlugs = Array.from(new Set([...predefinedSlugs, ...dynamicSlugs]));
-    
-    // Make sure 'tech' is included as it's a critical slug
-    if (!finalSlugs.includes('tech')) {
-      finalSlugs.push('tech');
+
+    // Filter topics that meet the minimum article count
+    for (const [slug, count] of Object.entries(topicCounts)) {
+      if (count >= MIN_ARTICLES_PER_TOPIC) {
+        allTopicSlugs.add(slug);
+      }
     }
-    
-    console.log(`[Server] Generated ${finalSlugs.length} static paths for topics`);
-    
-    // Log a few example slugs for debugging
-    console.log(`[Server] Example topic slugs: ${finalSlugs.slice(0, 5).join(', ')}...`);
-  
-  return {
-      paths: finalSlugs.map(slug => ({
-        params: { slug }
-      })),
-      // With fallback true, Nextjs will server-render pages on-demand if the path doesn't exist
-      // This is good for dynamic topics that might not be in our predefined list
-      fallback: true,
-    };
+
+    console.log(`[getStaticPaths] Found ${allTopicSlugs.size} topics with >= ${MIN_ARTICLES_PER_TOPIC} articles.`);
+
   } catch (error) {
-    console.error('Error in getStaticPaths:', error);
-    
-    // If there's an error, just return the predefined slugs
-    return {
-      paths: Array.from(predefinedSlugs).map(slug => ({
-        params: { slug }
-      })),
-      fallback: true
-    };
+    console.error('[getStaticPaths] Error fetching posts or processing topics:', error);
+    // Fallback to a minimal set of common topics if fetching fails
+    const commonTopics = ['tech', 'ai', 'science', 'business', 'featured', 'trending'];
+    commonTopics.forEach(topic => allTopicSlugs.add(topic));
+    console.log(`[getStaticPaths] Falling back to ${allTopicSlugs.size} common topics due to error.`);
   }
-} 
+  
+  // Add essential hardcoded topics just in case
+  ['featured', 'trending', 'latest', 'tech', 'ai', 'science'].forEach(t => allTopicSlugs.add(t));
+
+  // Create paths object
+  const paths = Array.from(allTopicSlugs).map(slug => ({ params: { slug } }));
+
+  console.log(`[getStaticPaths] Generating ${paths.length} paths.`);
+
+  return {
+    paths,
+    // fallback: 'blocking' // Use blocking to generate pages on demand if needed
+    // Consider using fallback: true or false depending on whether you want 404s or on-demand generation for non-listed topics
+    fallback: true // Allows for on-demand generation but might be slower initially
+  };
+}
 
 // Helper function to create mock articles
 function createMockArticles(topicSlug, filter) {
