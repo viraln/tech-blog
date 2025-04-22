@@ -1731,47 +1731,7 @@ export default function Post({ frontMatter, content, slug, relatedArticles: rawR
           <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
             <h2 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-6 sm:mb-8">
               You might also like
-              <span className="ml-2 text-sm font-medium text-gray-500">
-                Articles related to {frontMatter.category}
-              </span>
             </h2>
-
-            {/* API-powered Topic Related Articles */}
-            {frontMatter.categories || frontMatter.topics || frontMatter.category ? (
-              <div className="mb-10">
-                <h3 className="text-lg font-semibold mb-5">Discover more articles on this topic</h3>
-                {/* If topics are available, use the first topic */}
-                {frontMatter.topics && frontMatter.topics.length > 0 ? (
-                  <TopicRelatedArticles
-                    topic={typeof frontMatter.topics[0] === 'string' ? frontMatter.topics[0] : frontMatter.topics[0].id || frontMatter.topics[0].slug}
-                    title={null}
-                    limit={3}
-                    minScore={50}
-                    showRelevanceScore={true}
-                  />
-                ) : 
-                /* Otherwise try using categories */
-                frontMatter.categories && frontMatter.categories.length > 0 ? (
-                  <TopicRelatedArticles
-                    topic={typeof frontMatter.categories[0] === 'string' ? frontMatter.categories[0] : frontMatter.categories[0].id || frontMatter.categories[0].slug}
-                    title={null}
-                    limit={3}
-                    minScore={40}
-                    showRelevanceScore={true}
-                  />
-                ) : 
-                /* Finally fall back to main category */
-                frontMatter.category ? (
-                  <TopicRelatedArticles
-                    topic={frontMatter.category}
-                    title={null}
-                    limit={3}
-                    minScore={30}
-                    showRelevanceScore={true}
-                  />
-                ) : null}
-              </div>
-            ) : null}
 
             {/* Static Related Articles from props */}
             {processedRelatedArticles && processedRelatedArticles.length > 0 ? (
@@ -1894,41 +1854,6 @@ export default function Post({ frontMatter, content, slug, relatedArticles: rawR
               initialLoadOnMount={true}
               forceLoad={forceLoadMoreArticles} // Add force load function for manual loading
             />
-          </div>
-        </div>
-
-        {/* API-powered Topic Related Articles */}
-        <div className="bg-white py-8">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-            <h2 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-6 sm:mb-8">
-              More Articles on This Topic
-            </h2>
-            
-            {frontMatter.topics && frontMatter.topics.length > 0 ? (
-              <TopicRelatedArticles
-                topic={typeof frontMatter.topics[0] === 'string' ? frontMatter.topics[0] : frontMatter.topics[0].id || frontMatter.topics[0].slug}
-                title={null}
-                limit={4}
-                minScore={50}
-                showRelevanceScore={true}
-              />
-            ) : frontMatter.categories && frontMatter.categories.length > 0 ? (
-              <TopicRelatedArticles
-                topic={typeof frontMatter.categories[0] === 'string' ? frontMatter.categories[0] : frontMatter.categories[0].id || frontMatter.categories[0].slug}
-                title={null}
-                limit={4}
-                minScore={40}
-                showRelevanceScore={true}
-              />
-            ) : frontMatter.category ? (
-              <TopicRelatedArticles
-                topic={frontMatter.category}
-                title={null}
-                limit={4}
-                minScore={30}
-                showRelevanceScore={true}
-              />
-            ) : null}
           </div>
         </div>
       </article>

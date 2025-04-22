@@ -187,6 +187,15 @@ export async function getRelatedArticles(keywords = [], currentSlug, limit = 3, 
           if (!stats.isFile()) continue;
           
           const fileContents = fs.readFileSync(filePath, 'utf8');
+          
+          // --- START: LFS Pointer Check ---
+          // If the file content looks like an LFS pointer, skip this file.
+          if (fileContents.startsWith('version https://git-lfs.github.com/spec/v1')) {
+            console.warn(`[getRelatedArticles] Skipping LFS pointer file: ${filename}`);
+            continue; // Skip to the next file
+          }
+          // --- END: LFS Pointer Check ---
+          
           const { data } = matter(fileContents);
           
           // Store in cache for future use
@@ -514,6 +523,15 @@ export async function getAllArticles(options = {}) {
           frontMatter = articleCache.get(filename);
         } else {
           const fileContents = fs.readFileSync(filePath, 'utf8');
+          
+          // --- START: LFS Pointer Check ---
+          // If the file content looks like an LFS pointer, skip this file.
+          if (fileContents.startsWith('version https://git-lfs.github.com/spec/v1')) {
+            console.warn(`[getAllArticles] Skipping LFS pointer file: ${filename}`);
+            continue; // Skip to the next file
+          }
+          // --- END: LFS Pointer Check ---
+          
           const { data } = matter(fileContents);
           frontMatter = data;
           // Store in cache for future use
@@ -785,6 +803,15 @@ export async function loadArticleCachePage(page = 1) {
         // Only load if not already cached
         if (!articleCache.has(filename)) {
           const fileContents = fs.readFileSync(filePath, 'utf8');
+          
+          // --- START: LFS Pointer Check ---
+          // If the file content looks like an LFS pointer, skip this file.
+          if (fileContents.startsWith('version https://git-lfs.github.com/spec/v1')) {
+            console.warn(`[loadArticleCachePage] Skipping LFS pointer file: ${filename}`);
+            continue; // Skip to the next file
+          }
+          // --- END: LFS Pointer Check ---
+          
           const { data } = matter(fileContents);
           
           // If no date is present in frontmatter, try to extract from filename
@@ -966,6 +993,15 @@ export async function getArticleBySlug(slug) {
           frontMatter = articleCache.get(filename);
         } else {
           const fileContents = fs.readFileSync(filePath, 'utf8');
+          
+          // --- START: LFS Pointer Check ---
+          // If the file content looks like an LFS pointer, skip this file.
+          if (fileContents.startsWith('version https://git-lfs.github.com/spec/v1')) {
+            console.warn(`[getArticleBySlug] Skipping LFS pointer file: ${filename}`);
+            continue; // Skip to the next file
+          }
+          // --- END: LFS Pointer Check ---
+          
           const { data } = matter(fileContents);
           frontMatter = data;
           // Store in cache for future use
