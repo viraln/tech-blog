@@ -12,6 +12,7 @@
   NEXT_PUBLIC_SITE_URL = "https://trendiingz.com"
   GIT_LFS_SKIP_SMUDGE = "0"
   GIT_LFS_ENABLED = "true"
+  GIT_LFS_FETCH_INCLUDE = "*"
 
 [functions]
   # Increase function timeout for potential slow operations
