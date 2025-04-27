@@ -851,6 +851,12 @@ export async function getArticleBySlug(slug) {
       try {
         const filePath = path.join(process.cwd(), 'content/articles', targetFilename);
         const fileContents = fs.readFileSync(filePath, 'utf8');
+        // --- LFS CHECK --- 
+        if (fileContents.startsWith('version https://git-lfs.github.com/spec/v1')) {
+            console.warn(`[getArticleBySlug - SlugMap] Skipping LFS pointer file: ${targetFilename}`);
+            return null;
+        }
+        // --- END LFS CHECK --- 
         const { data, content } = matter(fileContents);
         
         return {
@@ -881,6 +887,12 @@ export async function getArticleBySlug(slug) {
     if (targetFilename) {
       const filePath = path.join(process.cwd(), 'content/articles', targetFilename);
       const fileContents = fs.readFileSync(filePath, 'utf8');
+      // --- LFS CHECK --- 
+      if (fileContents.startsWith('version https://git-lfs.github.com/spec/v1')) {
+          console.warn(`[getArticleBySlug - Cache Hit] Skipping LFS pointer file: ${targetFilename}`);
+          return null;
+      }
+      // --- END LFS CHECK --- 
       const { data, content } = matter(fileContents);
       
       return {
@@ -894,6 +906,12 @@ export async function getArticleBySlug(slug) {
     const directFilePath = path.join(process.cwd(), 'content/articles', `${slug}.md`);
     if (fs.existsSync(directFilePath)) {
       const fileContents = fs.readFileSync(directFilePath, 'utf8');
+      // --- LFS CHECK --- 
+      if (fileContents.startsWith('version https://git-lfs.github.com/spec/v1')) {
+          console.warn(`[getArticleBySlug - Direct Path] Skipping LFS pointer file: ${directFilePath}`);
+          return null;
+      }
+      // --- END LFS CHECK --- 
       const { data, content } = matter(fileContents);
       
       // Add to cache and slug map for future use
@@ -927,6 +945,12 @@ export async function getArticleBySlug(slug) {
     if (potentialMatch) {
       const filePath = path.join(process.cwd(), 'content/articles', potentialMatch);
       const fileContents = fs.readFileSync(filePath, 'utf8');
+      // --- LFS CHECK --- 
+      if (fileContents.startsWith('version https://git-lfs.github.com/spec/v1')) {
+          console.warn(`[getArticleBySlug - Potential Match] Skipping LFS pointer file: ${potentialMatch}`);
+          return null;
+      }
+      // --- END LFS CHECK --- 
       const { data, content } = matter(fileContents);
       
       // Add to cache and slug map for future use
@@ -993,15 +1017,12 @@ export async function getArticleBySlug(slug) {
           frontMatter = articleCache.get(filename);
         } else {
           const fileContents = fs.readFileSync(filePath, 'utf8');
-          
-          // --- START: LFS Pointer Check ---
-          // If the file content looks like an LFS pointer, skip this file.
+          // --- LFS CHECK (already added previously, but ensure it's here) --- 
           if (fileContents.startsWith('version https://git-lfs.github.com/spec/v1')) {
-            console.warn(`[getArticleBySlug] Skipping LFS pointer file: ${filename}`);
-            continue; // Skip to the next file
+            console.warn(`[getArticleBySlug - Loop] Skipping LFS pointer file: ${filename}`);
+            continue; // Skip to next file in loop
           }
-          // --- END: LFS Pointer Check ---
-          
+          // --- END LFS CHECK --- 
           const { data } = matter(fileContents);
           frontMatter = data;
           // Store in cache for future use
@@ -1009,8 +1030,29 @@ export async function getArticleBySlug(slug) {
         }
         
         if (frontMatter.slug === slug || filename.replace(/\.md$/, '') === slug) {
-          const fileContents = fs.readFileSync(filePath, 'utf8');
-          const { content } = matter(fileContents);
+          // We have the frontMatter, now we just need the *actual* content
+          // Re-read the file ONLY if we didn't get it from cache initially
+          let content = '';
+          if (!articleCache.has(filename)) { // Should be rare, but safe check
+            const contentFileContents = fs.readFileSync(filePath, 'utf8');
+            // --- LFS CHECK --- 
+            if (contentFileContents.startsWith('version https://git-lfs.github.com/spec/v1')) {
+                console.warn(`[getArticleBySlug - Loop Content Read] Skipping LFS pointer file: ${filename}`);
+                return null; // Return null if content is LFS pointer
+            }
+            // --- END LFS CHECK --- 
+            content = matter(contentFileContents).content;
+          } else {
+            // Need to read the file content again as cache only stores frontMatter
+            const contentFileContents = fs.readFileSync(filePath, 'utf8');
+             // --- LFS CHECK --- 
+            if (contentFileContents.startsWith('version https://git-lfs.github.com/spec/v1')) {
+                console.warn(`[getArticleBySlug - Loop Content Read from Cache] Skipping LFS pointer file: ${filename}`);
+                return null; // Return null if content is LFS pointer
+            }
+            // --- END LFS CHECK --- 
+            content = matter(contentFileContents).content;
+          }
           
           // Add to slug map for future lookups
           slugToFilenameMap.set(slug, filename);
