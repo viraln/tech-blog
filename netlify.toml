@@ -1,5 +1,5 @@
 [build]
-  command = " git lfs install && git lfs pull && npm run build"
+  command = "apt-get update && apt-get install -y git-lfs && git lfs install --system --skip-repo && git lfs pull && npm run build"
   publish = ".next"
   functions = "netlify/functions"
 
